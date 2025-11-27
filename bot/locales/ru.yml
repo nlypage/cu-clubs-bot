@@ -569,6 +569,7 @@ admin_club_menu_text: |-
   <b>Описание:</b>
   <blockquote>{{if .Club.Description}}{{html .Club.Description}}{{else}}<i>Не указано</i>{{end}}</blockquote>
 qr_allowed: QR-код ивента
+subscription_required: Доступ по подписке
 club_deleted: |-
   Клуб <b>{{html .Name}}</b> успешно удален
 add_club_owner: |-

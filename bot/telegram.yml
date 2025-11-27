@@ -473,6 +473,11 @@ buttons:
     callback_data: '{{.ID}} {{.Page}}'
     text: '{{if .QrAllowed}}{{text `tick`}}{{else}}{{text `cross`}}{{end}} {{ text `qr_allowed` }}'
 
+  admin:club:subscription_required:
+    unique: admin_club_sub_required
+    callback_data: '{{.ID}} {{.Page}}'
+    text: '{{if .SubscriptionRequired }}{{ text `tick` }}{{else}}{{text `cross` }}{{end}} {{ text `subscription_required` }}'
+
   admin:club:roles:
     unique: admin_club_roles
     callback_data: '{{.ID}} {{.Page}}'
@@ -698,6 +703,7 @@ markups:
     - [ admin:club:add_owner ]
     - [ admin:club:del_owner ]
     - [ admin:club:qr_allowed ]
+    - [ admin:club:subscription_required ]
     - [ admin:club:roles ]
     - [ admin:club:delete ]
     - [ admin:clubs:back ]
