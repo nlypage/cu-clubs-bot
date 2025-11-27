@@ -22,4 +22,7 @@ type Club struct {
 	AllowedRoles pq.StringArray `gorm:"type:text[]"`
 	// QrAllowed - true if group can create qr code that can be scanned by users for event registration
 	QrAllowed bool
+	// SubscriptionRequired - if SubscriptionRequired is true, user should subscribe on club's channel before register
+	// on club's event
+	SubscriptionRequired bool `gorm:"default:false"`
 }
