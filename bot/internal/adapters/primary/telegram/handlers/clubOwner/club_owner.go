@@ -709,7 +709,7 @@ func (h Handler) setClubName(c tele.Context) error {
 			)
 		case response.Message == nil:
 			_ = inputCollector.Send(c,
-				banner.ClubOwner.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_club_description"))),
+				banner.ClubOwner.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_club_name"))),
 				h.layout.Markup(c, "clubOwner:club:settings:profile:back", struct {
 					ID string
 				}{
@@ -1230,6 +1230,190 @@ func (h Handler) shouldShow(c tele.Context) error {
 		}{
 			ID:         updatedClub.ID,
 			ShouldShow: updatedClub.ShouldShow,
+		}),
+	)
+}
+
+func (h Handler) subscriptionAccess(c tele.Context) error {
+	clubID := c.Callback().Data
+
+	club, err := h.clubService.Get(context.Background(), clubID)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while get club: %v", c.Sender().ID, err)
+		return c.Send(
+			banner.Menu.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "clubOwner:club:settings:back", struct {
+				ID string
+			}{
+				ID: clubID,
+			}),
+		)
+	}
+
+	if c.Callback().Unique == "clOwner_cl_sub_acs_reqr" {
+		if club.SubscriptionRequireAllowed {
+			club.SubscriptionRequired = !club.SubscriptionRequired
+			club, err = h.clubService.Update(context.Background(), club)
+			if err != nil {
+				h.logger.Errorf("(user: %d) error while update club: %v", c.Sender().ID, err)
+				return c.Send(
+					banner.Menu.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+					h.layout.Markup(c, "clubOwner:club:settings:back", struct {
+						ID string
+					}{
+						ID: clubID,
+					}),
+				)
+			}
+		} else {
+			return c.Respond(&tele.CallbackResponse{
+				Text:      h.layout.Text(c, "subscription_access_not_allowed"),
+				ShowAlert: true,
+			})
+		}
+	}
+
+	var channelName *string
+	if club.ChannelID != nil {
+		chat, err := c.Bot().ChatByID(*club.ChannelID)
+		if err != nil {
+			h.logger.Errorf("(user: %d) error while get channel: %v", c.Sender().ID, err)
+			return c.Send(
+				banner.Menu.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+				h.layout.Markup(c, "clubOwner:club:settings:back", struct {
+					ID string
+				}{
+					ID: clubID,
+				}),
+			)
+		}
+
+		channelName = &chat.Username
+	}
+
+	return c.Edit(
+		banner.ClubOwner.Caption(h.layout.Text(c, "subscription_access_text", struct {
+			ChannelName *string
+		}{
+			ChannelName: channelName,
+		})),
+		h.layout.Markup(c, "clubOwner:club:settings:subscription_access", struct {
+			ID                   string
+			SubscriptionRequired bool
+		}{
+			ID:                   clubID,
+			SubscriptionRequired: club.SubscriptionRequired,
+		}),
+	)
+}
+
+func (h Handler) setChannelID(c tele.Context) error {
+	h.logger.Infof("(user: %d) set club channel id", c.Sender().ID)
+
+	club, err := h.clubService.Get(context.Background(), c.Callback().Data)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while get club: %v", c.Sender().ID, err)
+		return c.Send(
+			banner.ClubOwner.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "mainMenu:back"),
+		)
+	}
+
+	inputCollector := collector.New()
+	_ = c.Edit(
+		banner.ClubOwner.Caption(h.layout.Text(c, "input_channel_id")),
+		h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+			ID string
+		}{
+			ID: club.ID,
+		}),
+	)
+	inputCollector.Collect(c.Message())
+
+	var (
+		channelID int64
+		done      bool
+	)
+	for {
+		response, errGet := h.input.Get(context.Background(), c.Sender().ID, 0)
+		if response.Message != nil {
+			inputCollector.Collect(response.Message)
+		}
+		switch {
+		case response.Canceled:
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true, ExcludeLast: true})
+			return nil
+		case errGet != nil:
+			h.logger.Errorf("(user: %d) error while input channel id: %v", c.Sender().ID, errGet)
+			_ = inputCollector.Send(c,
+				banner.ClubOwner.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_channel_id"))),
+				h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+					ID string
+				}{
+					ID: club.ID,
+				}),
+			)
+		case response.Message == nil:
+			_ = inputCollector.Send(c,
+				banner.ClubOwner.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_channel_id"))),
+				h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+					ID string
+				}{
+					ID: club.ID,
+				}),
+			)
+		case !validator.ChannelID(response.Message.Text, nil):
+			_ = inputCollector.Send(c,
+				banner.ClubOwner.Caption(h.layout.Text(c, "invalid_channel_id")),
+				h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+					ID string
+				}{
+					ID: club.ID,
+				}),
+			)
+		case validator.ChannelID(response.Message.Text, nil):
+			channelID, _ = strconv.ParseInt(response.Message.Text, 10, 64)
+			_, err := c.Bot().ChatByID(*club.ChannelID)
+			if err != nil {
+				_ = inputCollector.Send(c,
+					banner.ClubOwner.Caption(h.layout.Text(c, "invalid_channel_id")),
+					h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+						ID string
+					}{
+						ID: club.ID,
+					}),
+				)
+				continue
+			}
+
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true})
+			done = true
+		}
+		if done {
+			break
+		}
+	}
+
+	club.ChannelID = &channelID
+	_, err = h.clubService.Update(context.Background(), club)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while update channel id: %v", c.Sender().ID, err)
+		return c.Send(
+			banner.ClubOwner.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+				ID string
+			}{
+				ID: club.ID,
+			}),
+		)
+	}
+
+	return c.Send(
+		banner.ClubOwner.Caption(h.layout.Text(c, "channel_id_set")),
+		h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
+			ID string
+		}{
+			ID: club.ID,
 		}),
 	)
 }
@@ -3736,6 +3920,10 @@ func (h Handler) ClubOwnerSetup(group *tele.Group, middle *middlewares.Handler) 
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:set_avatar"), h.setClubAvatar)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:set_intro"), h.setClubIntro)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:should_show"), h.shouldShow)
+	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access"), h.subscriptionAccess)
+	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:required"), h.subscriptionAccess)
+	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:set_channel_id"), h.setChannelID)
+	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:back"), h.subscriptionAccess)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:back"), h.profile)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:warnings:user"), h.warnings)
 }

@@ -24,5 +24,7 @@ type Club struct {
 	QrAllowed bool
 	// SubscriptionRequired - if SubscriptionRequired is true, user should subscribe on club's channel before register
 	// on club's event
-	SubscriptionRequired bool `gorm:"default:false"`
+	SubscriptionRequireAllowed bool `gorm:"default:false"`
+	SubscriptionRequired       bool `gorm:"default:false"`
+	ChannelID                  *int64
 }

@@ -2,6 +2,7 @@ package validator
 
 import (
 	"net/url"
+	"strconv"
 	"unicode/utf8"
 )
 
@@ -19,4 +20,9 @@ func ClubLink(link string, _ map[string]interface{}) bool {
 	}
 
 	return utf8.RuneCountInString(link) <= 100
+}
+
+func ChannelID(id string, _ map[string]interface{}) bool {
+	_, err := strconv.ParseInt(id, 10, 64)
+	return err == nil
 }

@@ -167,6 +167,8 @@ max_participants_reached: |-
   К сожалению, максимальное количество участников достигнуто
 not_allowed_role: |-
   К сожалению, для вашей роли это мероприятие недоступно
+user_not_subscribed: |-
+  Для участия в мероприятиях подпишитесь на канал клуба @{{.ChannelName}}
 registered: ✅ Вы зарегистрированы
 my_events_list: |-
   <b>Список мероприятий, на которые вы регистрировались</b>
@@ -226,6 +228,22 @@ club_settings_text: |-
   {{if .Club.Link}}<code>{{html .Club.Link}}</code>{{else}}Не указано{{end}}
 
 warnings: Уведомления
+subscription_access: Доступ по подписке
+subscription_access_text: |-
+  Настройки обязательной подписки на канал клуба для регистрации на мероприятия.
+  
+  Канал, на который необходимо подписаться: {{ if .ChannelName }}@{{ .ChannelName }}{{ else }}Не установлен{{end}}
+  
+  ❗️Важно❗️
+  Для корректной работы требуется:
+  - Канал клуба должен быть публичным
+  - Необходимо добавить @cu_clubs_bot в канал и выдать ему права администратора
+  - Необходимо указать именно ID канала, добавив вначало -100
+  При возникновении вопросов обратиться к @uikola
+
+subscription_access_not_allowed: |-
+  Данная функция доступна для клубов, вышедших на seed. Если вы уже достигли данного уровня,
+  то обратитесь к администратору
 warnings_text: |-
   <b>Настройка уведомлений клуба</b>
 
@@ -261,6 +279,13 @@ invalid_club_intro: |-
   <b>Некорректное интро, интро должно быть кружком</b>
 club_intro_set: |-
   <b>Интро клуба успешно установлено</b>
+set_channel_id: Установить ID канала
+input_channel_id: |-
+  <b>Отправьте id канала, на который пользователям необходимо подписаться</b>
+invalid_channel_id: |-
+  <b>Некорректный id канала, проверьте, всё ли вы сделали правильно</b>
+channel_id_set: |-
+  <b>ID канала успешно установлено</b>
 
 create_event: Создать мероприятие
 club_events: Мероприятия
@@ -569,7 +594,7 @@ admin_club_menu_text: |-
   <b>Описание:</b>
   <blockquote>{{if .Club.Description}}{{html .Club.Description}}{{else}}<i>Не указано</i>{{end}}</blockquote>
 qr_allowed: QR-код ивента
-subscription_required: Доступ по подписке
+subscription_require_allowed: Доступ по подписке
 club_deleted: |-
   Клуб <b>{{html .Name}}</b> успешно удален
 add_club_owner: |-
