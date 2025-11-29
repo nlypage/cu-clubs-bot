@@ -221,6 +221,26 @@ buttons:
     callback_data: '{{.ID}}'
     text: '{{ text `add_club_owner` }}'
 
+  clubOwner:club:settings:subscription_access:
+    unique: clOwner_cl_sub_access
+    callback_data: '{{.ID}}'
+    text: '{{ text `subscription_access` }}'
+
+  clubOwner:club:settings:subscription_access:required:
+    unique: clOwner_cl_sub_acs_reqr
+    callback_data: '{{.ID}}'
+    text: '{{if .SubscriptionRequired }}{{ text `tick` }}{{else}}{{text `cross` }}{{end}} {{ text `subscription_require_allowed` }}'
+
+  clubOwner:club:settings:subscription_access:set_channel_id:
+    unique: clOwner_club_set_chan_id
+    callback_data: '{{.ID}}'
+    text: '{{ text `set_channel_id` }}'
+
+  clubOwner:club:settings:subscription_access:back:
+    unique: clOwner_cl_sub_acs_back
+    callback_data: '{{.ID}}'
+    text: '{{ text `back` }}'
+
   clubOwner:club:settings:profile:
     unique: clubOwner_club
     callback_data: '{{.ID}}'
@@ -473,6 +493,11 @@ buttons:
     callback_data: '{{.ID}} {{.Page}}'
     text: '{{if .QrAllowed}}{{text `tick`}}{{else}}{{text `cross`}}{{end}} {{ text `qr_allowed` }}'
 
+  admin:club:subscription_require_allowed:
+    unique: admin_club_sub_req_allow
+    callback_data: '{{.ID}} {{.Page}}'
+    text: '{{if .SubscriptionRequireAllowed }}{{ text `tick` }}{{else}}{{text `cross` }}{{end}} {{ text `subscription_require_allowed` }}'
+
   admin:club:roles:
     unique: admin_club_roles
     callback_data: '{{.ID}} {{.Page}}'
@@ -635,6 +660,7 @@ markups:
     - [ clubOwner:club:settings:add_owner ]
     - [ clubOwner:club:settings:warnings ]
     - [ clubOwner:club:settings:profile ]
+    - [ clubOwner:club:settings:subscription_access ]
     - [ clubOwner:club:back ]
   clubOwner:club:settings:back:
     - [ clubOwner:club:settings:back ]
@@ -648,6 +674,12 @@ markups:
     - [ clubOwner:club:settings:back ]
   clubOwner:club:settings:profile:back:
     - [ clubOwner:club:settings:profile:back ]
+  clubOwner:club:settings:subscription_access:
+    - [ clubOwner:club:settings:subscription_access:required ]
+    - [ clubOwner:club:settings:subscription_access:set_channel_id ]
+    - [ clubOwner:club:settings:back ]
+  clubOwner:club:settings:subscription_access:back:
+    - [ clubOwner:club:settings:subscription_access:back ]
 
   clubOwner:club:back:
     - [ clubOwner:club:back ]
@@ -698,6 +730,7 @@ markups:
     - [ admin:club:add_owner ]
     - [ admin:club:del_owner ]
     - [ admin:club:qr_allowed ]
+    - [ admin:club:subscription_require_allowed ]
     - [ admin:club:roles ]
     - [ admin:club:delete ]
     - [ admin:clubs:back ]
