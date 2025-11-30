@@ -1373,7 +1373,7 @@ func (h Handler) setChannelID(c tele.Context) error {
 			)
 		case validator.ChannelID(response.Message.Text, nil):
 			channelID, _ = strconv.ParseInt(response.Message.Text, 10, 64)
-			_, err := c.Bot().ChatByID(*club.ChannelID)
+			_, err := c.Bot().ChatByID(channelID)
 			if err != nil {
 				_ = inputCollector.Send(c,
 					banner.ClubOwner.Caption(h.layout.Text(c, "invalid_channel_id")),
