@@ -140,35 +140,35 @@ func (s *NotifyService) StartNotifyScheduler() {
 	s.logger.Info("Notify scheduler started")
 }
 
-// StartClubOwnerMailingScheduler starts the scheduler for sending weekly mailing to club owners
-func (s *NotifyService) StartClubOwnerMailingScheduler() error {
-	s.logger.Debug("Initializing club owner mailing scheduler...")
+// StartClubOwnerReminderScheduler starts the scheduler for sending weekly reminder to club owners
+func (s *NotifyService) StartClubOwnerReminderScheduler() error {
+	s.logger.Debug("Initializing club owner reminder scheduler...")
 
 	// Schedule for every Friday at 16:00
 	_, err := s.cron.AddFunc("0 16 * * 5", func() {
-		s.logger.Info("=== Club Owner Mailing Scheduler Triggered ===")
-		s.sendClubOwnerMailing(context.Background())
+		s.logger.Info("=== Club Owner Reminder Scheduler Triggered ===")
+		s.sendClubOwnerReminder(context.Background())
 	})
 	if err != nil {
 		return err
 	}
 
 	s.cron.Start()
-	s.logger.Info("Club owner mailing scheduler started")
+	s.logger.Info("Club owner reminder scheduler started")
 	return nil
 }
 
-// StopClubOwnerMailingScheduler stops the club owner mailing scheduler
-func (s *NotifyService) StopClubOwnerMailingScheduler() {
+// StopClubOwnerReminderScheduler stops the club owner reminder scheduler
+func (s *NotifyService) StopClubOwnerReminderScheduler() {
 	if s.cron != nil {
 		s.cron.Stop()
-		s.logger.Info("Club owner mailing scheduler stopped")
+		s.logger.Info("Club owner reminder scheduler stopped")
 	}
 }
 
-// sendClubOwnerMailing sends weekly mailing to all club owners
-func (s *NotifyService) sendClubOwnerMailing(ctx context.Context) {
-	s.logger.Info("Sending weekly mailing to club owners")
+// sendClubOwnerReminder sends weekly reminder to all club owners
+func (s *NotifyService) sendClubOwnerReminder(ctx context.Context) {
+	s.logger.Info("Sending weekly reminder to club owners")
 
 	clubOwners, err := s.clubOwnerService.GetAllUniqueClubOwners(ctx)
 	if err != nil {
@@ -176,7 +176,7 @@ func (s *NotifyService) sendClubOwnerMailing(ctx context.Context) {
 		return
 	}
 
-	s.logger.Infof("Found %d unique club owners to send mailing", len(clubOwners))
+	s.logger.Infof("Found %d unique club owners to send reminder", len(clubOwners))
 
 	for _, owner := range clubOwners {
 		if owner.IsBanned {
@@ -191,7 +191,7 @@ func (s *NotifyService) sendClubOwnerMailing(ctx context.Context) {
 		}
 
 		_, errSend := s.bot.Send(chat,
-			s.layout.TextLocale("ru", "club_owner_weekly_mailing"),
+			s.layout.TextLocale("ru", "club_owner_weekly_reminder"),
 			s.layout.MarkupLocale("ru", "core:hide"),
 		)
 		if errSend != nil {
@@ -199,10 +199,10 @@ func (s *NotifyService) sendClubOwnerMailing(ctx context.Context) {
 			continue
 		}
 
-		s.logger.Infof("Sent weekly mailing to club owner %d (%s)", owner.UserID, owner.FIO.String())
+		s.logger.Infof("Sent weekly reminder to club owner %d (%s)", owner.UserID, owner.FIO.String())
 	}
 
-	s.logger.Info("Weekly mailing to club owners completed")
+	s.logger.Info("Weekly reminder to club owners completed")
 }
 
 // checkAndNotify checks for events starting in the next 25 hours (to cover both day and hour notifications)

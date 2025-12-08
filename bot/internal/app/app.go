@@ -71,10 +71,10 @@ func (a *App) Run() {
 		logger.Log.Errorf("failed to start pass scheduler: %v", err)
 	}
 
-	// Start club owner mailing scheduler
-	err = a.serviceProvider.NotifyService().StartClubOwnerMailingScheduler()
+	// Start club owner reminder scheduler
+	err = a.serviceProvider.NotifyService().StartClubOwnerReminderScheduler()
 	if err != nil {
-		logger.Log.Errorf("failed to start club owner mailing scheduler: %v", err)
+		logger.Log.Errorf("failed to start club owner reminder scheduler: %v", err)
 	}
 
 	// Wait for shutdown signal
@@ -95,11 +95,11 @@ func (a *App) gracefulShutdown() {
 			logger.Log.Info("Pass scheduler stopped")
 		}
 
-		// Stop club owner mailing scheduler
+		// Stop club owner reminder scheduler
 		if a.serviceProvider.notifyService != nil {
-			logger.Log.Info("Stopping club owner mailing scheduler...")
-			a.serviceProvider.notifyService.StopClubOwnerMailingScheduler()
-			logger.Log.Info("Club owner mailing scheduler stopped")
+			logger.Log.Info("Stopping club owner reminder scheduler...")
+			a.serviceProvider.notifyService.StopClubOwnerReminderScheduler()
+			logger.Log.Info("Club owner reminder scheduler stopped")
 		}
 
 		// Stop the bot
