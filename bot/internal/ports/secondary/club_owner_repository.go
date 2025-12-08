@@ -15,4 +15,5 @@ type ClubOwnerRepository interface {
 	Update(ctx context.Context, clubOwner *entity.ClubOwner) (*entity.ClubOwner, error)
 	GetByClubID(ctx context.Context, clubID string) ([]dto.ClubOwner, error)
 	GetByUserID(ctx context.Context, userID int64) ([]dto.ClubOwner, error)
+	GetAllUniqueClubOwners(ctx context.Context) ([]dto.ClubOwner, error)
 }

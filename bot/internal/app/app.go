@@ -71,6 +71,12 @@ func (a *App) Run() {
 		logger.Log.Errorf("failed to start pass scheduler: %v", err)
 	}
 
+	// Start club owner reminder scheduler
+	err = a.serviceProvider.NotifyService().StartClubOwnerReminderScheduler()
+	if err != nil {
+		logger.Log.Errorf("failed to start club owner reminder scheduler: %v", err)
+	}
+
 	// Wait for shutdown signal
 	sig := <-sigChan
 	logger.Log.Infof("Received signal %v, starting graceful shutdown...", sig)
@@ -87,6 +93,13 @@ func (a *App) gracefulShutdown() {
 			logger.Log.Info("Stopping pass scheduler...")
 			a.serviceProvider.passService.StopScheduler()
 			logger.Log.Info("Pass scheduler stopped")
+		}
+
+		// Stop club owner reminder scheduler
+		if a.serviceProvider.notifyService != nil {
+			logger.Log.Info("Stopping club owner reminder scheduler...")
+			a.serviceProvider.notifyService.StopClubOwnerReminderScheduler()
+			logger.Log.Info("Club owner reminder scheduler stopped")
 		}
 
 		// Stop the bot

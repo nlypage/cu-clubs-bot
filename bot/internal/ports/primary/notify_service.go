@@ -12,4 +12,6 @@ type NotifyService interface {
 	SendClubWarning(clubID string, what interface{}, opts ...interface{}) error
 	SendEventUpdate(eventID string, what interface{}, opts ...interface{}) error
 	StartNotifyScheduler()
+	StartClubOwnerReminderScheduler() error
+	StopClubOwnerReminderScheduler()
 }
