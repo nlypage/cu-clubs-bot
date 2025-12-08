@@ -11,6 +11,7 @@ import (
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 
+	"github.com/robfig/cron/v3"
 	"go.uber.org/zap/zapcore"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/layout"
@@ -27,6 +28,8 @@ type NotifyService struct {
 	bot    *tele.Bot
 	layout *layout.Layout
 	logger *types.Logger
+
+	cron *cron.Cron
 }
 
 func NewNotifyService(
@@ -46,6 +49,7 @@ func NewNotifyService(
 		bot:                  bot,
 		layout:               layout,
 		logger:               logger,
+		cron:                 cron.New(cron.WithLocation(location.Location())),
 	}
 }
 
@@ -134,6 +138,71 @@ func (s *NotifyService) StartNotifyScheduler() {
 		}
 	}()
 	s.logger.Info("Notify scheduler started")
+}
+
+// StartClubOwnerMailingScheduler starts the scheduler for sending weekly mailing to club owners
+func (s *NotifyService) StartClubOwnerMailingScheduler() error {
+	s.logger.Debug("Initializing club owner mailing scheduler...")
+
+	// Schedule for every Friday at 16:00
+	_, err := s.cron.AddFunc("0 16 * * 5", func() {
+		s.logger.Info("=== Club Owner Mailing Scheduler Triggered ===")
+		s.sendClubOwnerMailing(context.Background())
+	})
+	if err != nil {
+		return err
+	}
+
+	s.cron.Start()
+	s.logger.Info("Club owner mailing scheduler started")
+	return nil
+}
+
+// StopClubOwnerMailingScheduler stops the club owner mailing scheduler
+func (s *NotifyService) StopClubOwnerMailingScheduler() {
+	if s.cron != nil {
+		s.cron.Stop()
+		s.logger.Info("Club owner mailing scheduler stopped")
+	}
+}
+
+// sendClubOwnerMailing sends weekly mailing to all club owners
+func (s *NotifyService) sendClubOwnerMailing(ctx context.Context) {
+	s.logger.Info("Sending weekly mailing to club owners")
+
+	clubOwners, err := s.clubOwnerService.GetAllUniqueClubOwners(ctx)
+	if err != nil {
+		s.logger.Errorf("Failed to get club owners: %v", err)
+		return
+	}
+
+	s.logger.Infof("Found %d unique club owners to send mailing", len(clubOwners))
+
+	for _, owner := range clubOwners {
+		if owner.IsBanned {
+			s.logger.Debugf("Skipping banned user %d", owner.UserID)
+			continue
+		}
+
+		chat, errGetChat := s.bot.ChatByID(owner.UserID)
+		if errGetChat != nil {
+			s.logger.Errorf("Failed to get chat for user %d: %v", owner.UserID, errGetChat)
+			continue
+		}
+
+		_, errSend := s.bot.Send(chat,
+			s.layout.TextLocale("ru", "club_owner_weekly_mailing"),
+			s.layout.MarkupLocale("ru", "core:hide"),
+		)
+		if errSend != nil {
+			s.logger.Errorf("Failed to send mailing to user %d: %v", owner.UserID, errSend)
+			continue
+		}
+
+		s.logger.Infof("Sent weekly mailing to club owner %d (%s)", owner.UserID, owner.FIO.String())
+	}
+
+	s.logger.Info("Weekly mailing to club owners completed")
 }
 
 // checkAndNotify checks for events starting in the next 25 hours (to cover both day and hour notifications)

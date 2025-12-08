@@ -175,3 +175,56 @@ func (s *ClubOwnerRepository) GetByUserID(ctx context.Context, userID int64) ([]
 
 	return result, nil
 }
+
+func (s *ClubOwnerRepository) GetAllUniqueClubOwners(ctx context.Context) ([]dto.ClubOwner, error) {
+	type RawClubOwner struct {
+		UserID   int64  `gorm:"column:user_id"`
+		Username string `gorm:"column:username"`
+		Warnings bool   `gorm:"column:warnings"`
+		FIO      string `gorm:"column:fio"`
+		Email    string `gorm:"column:email"`
+		Role     string `gorm:"column:role"`
+		IsBanned bool   `gorm:"column:is_banned"`
+	}
+
+	var rawResult []RawClubOwner
+	err := s.db.WithContext(ctx).
+		Table("club_owners").
+		Select("DISTINCT club_owners.user_id, users.username, club_owners.warnings, users.fio, users.email, users.role, users.is_banned").
+		Joins("LEFT JOIN users ON users.id = club_owners.user_id").
+		Scan(&rawResult).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.ClubOwner, len(rawResult))
+	for i, raw := range rawResult {
+		var email valueobject.Email
+		if raw.Email != "" {
+			var err error
+			email, err = valueobject.NewEmail(raw.Email)
+			if err != nil {
+				return nil, fmt.Errorf("invalid email format for user %d: %w", raw.UserID, err)
+			}
+		}
+
+		fio, err := valueobject.NewFIOFromString(raw.FIO)
+		if err != nil {
+			return nil, fmt.Errorf("invalid FIO format for user %d: %w", raw.UserID, err)
+		}
+
+		role := valueobject.Role(raw.Role)
+
+		result[i] = dto.ClubOwner{
+			UserID:   raw.UserID,
+			Username: raw.Username,
+			FIO:      fio,
+			Email:    email,
+			Role:     role,
+			IsBanned: raw.IsBanned,
+			Warnings: raw.Warnings,
+		}
+	}
+
+	return result, nil
+}

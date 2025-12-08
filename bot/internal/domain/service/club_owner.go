@@ -44,3 +44,7 @@ func (s *ClubOwnerService) GetByClubID(ctx context.Context, clubID string) ([]dt
 func (s *ClubOwnerService) GetByUserID(ctx context.Context, userID int64) ([]dto.ClubOwner, error) {
 	return s.repo.GetByUserID(ctx, userID)
 }
+
+func (s *ClubOwnerService) GetAllUniqueClubOwners(ctx context.Context) ([]dto.ClubOwner, error) {
+	return s.repo.GetAllUniqueClubOwners(ctx)
+}
