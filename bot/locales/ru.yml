@@ -108,6 +108,7 @@ email_auth_link_resent: |-
 main_menu_text: |-
   <b>Главное меню</b>
 events: Мероприятия
+events_list_btn: Список мероприятий
 cu_clubs: Клубы ЦУ
 club_about: О клубе
 personal_account: Личный кабинет
@@ -564,7 +565,7 @@ max_participants_reached_warning: |-
   Мероприятие: <b>{{html .Name}}</b>
   <b>Максимальное количество участников достигнуто</b>
 
-  <b>Количество участников: {{.ParticipantsCount}}</b>
+  <b>Количество участников: {{.dParticipantsCount}}</b>
 
 #admin menu
 admin_menu_text: |-

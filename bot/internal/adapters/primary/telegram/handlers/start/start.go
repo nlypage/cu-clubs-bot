@@ -109,6 +109,7 @@ func (h Handler) Start(c tele.Context) error {
 				h.layout.Markup(c, "core:hide"),
 			)
 		}
+
 		return h.menuHandler.SendMenu(c)
 	}
 

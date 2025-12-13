@@ -4,6 +4,7 @@ services:
     image: ${REGISTRY_URL}/${GITHUB_REPOSITORY}:${TAG:-main}
     depends_on:
       - redis
+      - export-html
     volumes:
       - ./logs:/opt/logs
       - ./config:/opt/config
@@ -11,6 +12,13 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "com.centurylinklabs.watchtower.monitor-only=false"
+
+  export-html:
+    container_name: export-html
+    image: bedrockio/export-html:latest
+    expose:
+      - "2305"
+    restart: always
 
   redis:
     container_name: redis
