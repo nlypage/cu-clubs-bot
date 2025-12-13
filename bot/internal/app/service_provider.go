@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"gopkg.in/gomail.v2"
 	postgresDriver "gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -113,7 +114,7 @@ func (s *serviceProvider) DB() *gorm.DB {
 		}
 
 		// Set location
-		time.Local = s.cfg.Logger.TimeLocation()
+		time.Local = location.Location()
 
 		dsn := s.cfg.PG.DSN()
 

@@ -2016,7 +2016,7 @@ func (h Handler) generateDigestText(events []entity.Event, botUsername string) s
 	// Group events by day
 	eventsByDay := make(map[string][]entity.Event)
 	for _, event := range events {
-		day := event.StartTime.In(time.Local).Format("2006-01-02")
+		day := event.StartTime.In(location.Location()).Format("2006-01-02")
 		eventsByDay[day] = append(eventsByDay[day], event)
 	}
 
