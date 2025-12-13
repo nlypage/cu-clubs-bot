@@ -25,13 +25,14 @@ import (
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/secondary/redis/events"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/common/errorz"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
-	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/banner"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/calendar"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/valueobject"
+
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/validator"
-	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/valueobject"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/primary"
 	"github.com/Badsnus/cu-clubs-bot/bot/pkg/logger/types"
 )
@@ -1982,24 +1983,10 @@ func (h Handler) digest(c tele.Context) error {
 	botUsername := c.Bot().Me.Username
 
 	// Get events for the week
-	now := time.Now()
-	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
-	if now.Weekday() == time.Sunday {
-		startOfWeek = now.AddDate(0, 0, -6)
-	}
-	endOfWeek := startOfWeek.AddDate(0, 0, 7)
-
-	allEvents, err := h.eventService.GetAll(context.Background())
+	weeklyEvents, err := h.eventService.GetWeeklyEvents(context.Background())
 	if err != nil {
 		h.logger.Errorf("(user: %d) error getting all events: %v", c.Sender().ID, err)
 		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
-	}
-
-	var weeklyEvents []entity.Event
-	for _, event := range allEvents {
-		if event.StartTime.After(startOfWeek.AddDate(0, 0, -1)) && event.StartTime.Before(endOfWeek) {
-			weeklyEvents = append(weeklyEvents, event)
-		}
 	}
 
 	if len(weeklyEvents) == 0 {
@@ -2062,8 +2049,12 @@ func (h Handler) generateDigestText(events []entity.Event, botUsername string) s
 		text += fmt.Sprintf("<b>%s (%d %s):</b>\n\n", weekdayName, dayInt, getMonthName(date.Month()))
 
 		for _, event := range eventsByDay[dayStr] {
-			link := fmt.Sprintf("https://t.me/%s?start=event_%s", botUsername, event.ID)
-			text += fmt.Sprintf("➡️ <a href=\"%s\">%s</a>\n", link, event.Name)
+			if time.Now().In(location.Location()).After(event.RegistrationEnd) {
+				text += fmt.Sprintf("➡️ %s\n", event.Name)
+			} else {
+				link := fmt.Sprintf("https://t.me/%s?start=event_%s", botUsername, event.ID)
+				text += fmt.Sprintf("➡️ <a href=\"%s\">%s</a>\n", link, event.Name)
+			}
 		}
 		text += "\n"
 	}
