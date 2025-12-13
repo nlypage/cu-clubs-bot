@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"time"
@@ -89,59 +88,109 @@ func (s *EventService) GetWithPagination(ctx context.Context, limit, offset int,
 }
 
 // GenerateWeeklyDigestImage generates images of the weekly events digest
-func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([][]byte, error) {
-	// Group events by day
+// GetWeeklyEvents filters events for the current week (Monday to Sunday).
+// Logic: Start of week is the Monday of the current week.
+// End of week is the following Monday.
+// Events are included if StartTime >= startOfWeek - 1 day and < endOfWeek.
+// This ensures the current week including Sunday.
+func (s *EventService) GetWeeklyEvents(ctx context.Context) ([]entity.Event, error) {
+	now := time.Now().In(location.Location())
+	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+	if now.Weekday() == time.Sunday {
+		startOfWeek = now.AddDate(0, 0, -6)
+	}
+	endOfWeek := startOfWeek.AddDate(0, 0, 7)
+
+	allEvents, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var weeklyEvents []entity.Event
+	for _, event := range allEvents {
+		if event.StartTime.After(startOfWeek.AddDate(0, 0, -1)) && event.StartTime.Before(endOfWeek) {
+			weeklyEvents = append(weeklyEvents, event)
+		}
+	}
+	return weeklyEvents, nil
+}
+
+// groupEventsByDay groups events by their start day (truncated to day).
+func groupEventsByDay(events []entity.Event) map[time.Time][]entity.Event {
 	eventsByDay := make(map[time.Time][]entity.Event)
 	for _, event := range events {
-		day := event.StartTime.Truncate(24 * time.Hour)
+		day := event.StartTime.In(location.Location()).Truncate(24 * time.Hour)
 		eventsByDay[day] = append(eventsByDay[day], event)
 	}
+	return eventsByDay
+}
 
-	// Sort days
-	var days []time.Time
-	for day := range eventsByDay {
-		days = append(days, day)
+// generateWeekDays generates 7 days starting from the given startOfWeek (Monday).
+func generateWeekDays(startOfWeek time.Time) []time.Time {
+	days := make([]time.Time, 7)
+	for i := 0; i < 7; i++ {
+		days[i] = startOfWeek.AddDate(0, 0, i)
 	}
-	sort.Slice(days, func(i, j int) bool {
-		return days[i].Before(days[j])
-	})
+	return days
+}
 
-	// Assume week starts from Monday
-	// Find the Monday of the week
-	if len(days) > 0 {
-		startOfWeek := days[0]
+func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([][]byte, error) {
+	eventsByDay := groupEventsByDay(events)
+
+	// Find startOfWeek from the events
+	var startOfWeek time.Time
+	if len(events) > 0 {
+		// Use the earliest event day
+		minDay := events[0].StartTime.In(location.Location()).Truncate(24 * time.Hour)
+		for _, event := range events {
+			day := event.StartTime.In(location.Location()).Truncate(24 * time.Hour)
+			if day.Before(minDay) {
+				minDay = day
+			}
+		}
+		startOfWeek = minDay
 		for startOfWeek.Weekday() != time.Monday {
 			startOfWeek = startOfWeek.AddDate(0, 0, -1)
 		}
-		// Generate 7 days
-		days = []time.Time{}
-		for i := 0; i < 7; i++ {
-			days = append(days, startOfWeek.AddDate(0, 0, i))
+	} else {
+		// If no events, use current week
+		now := time.Now().In(location.Location())
+		startOfWeek = now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+		if now.Weekday() == time.Sunday {
+			startOfWeek = now.AddDate(0, 0, -6)
 		}
 	}
+
+	days := generateWeekDays(startOfWeek)
 
 	// Calculate approximate height: base 400px (calendar) + 60px per event, max 2000px
 	totalEvents := 0
 	for _, evs := range eventsByDay {
 		totalEvents += len(evs)
 	}
-	approxHeight := 400 + totalEvents*60
-	if approxHeight > 2000 {
-		approxHeight = 2000
+	calculatedHeight := 400 + totalEvents*60
+	scale := 1.0
+	maxHeight := 2000
+	if calculatedHeight > maxHeight {
+		scale = float64(maxHeight) / float64(calculatedHeight)
+	}
+	clipHeight := int(float64(calculatedHeight) * scale)
+	if clipHeight > maxHeight {
+		clipHeight = maxHeight
 	}
 
 	// Generate HTML
-	html := generateDigestHTML(days, eventsByDay)
+	html := generateDigestHTML(days, eventsByDay, scale)
 
 	// Convert HTML to image using export-html
-	image, err := htmlToImage(html, approxHeight)
+	image, err := htmlToImage(html, clipHeight)
 	if err != nil {
 		return nil, err
 	}
 	return [][]byte{image}, nil
 }
 
-func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Event) string {
+func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Event, scale float64) string {
 	// Template based on clubs.html
 	tmpl := template.Must(template.New("digest").Parse(`
 <!DOCTYPE html>
@@ -179,7 +228,7 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
         .dot.orange { background: #ff8642; }
         .legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
         .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; background: #fff; border-radius: 4px; }
-        .events-page { padding: 40px; background: #ececec; }
+        .events-page { padding: 20px 40px 40px 40px; background: #ececec; }
         .events-header { border-bottom: 1px solid #ddd; padding-bottom: 12px; margin-bottom: 12px; }
         .events-container { background: #ececec; }
         .event-item { display: grid; grid-template-columns: 10px 0.5fr 1fr; gap: 12px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #ddd; overflow: hidden; }
@@ -193,7 +242,7 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
         @media print { body { margin: 0; padding: 0; } }
     </style>
 </head>
-<body>
+<body style="transform: scale({{.Scale}}); transform-origin: top left;">
 <div class="page calendar-page">
     <div class="header">
         <h1 class="title">События недели</h1>
@@ -257,7 +306,6 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 	}
 
 	today := time.Now().In(location.Location()).Day()
-	log.Println(today)
 	var dayDatas []DayData
 	for _, day := range days {
 		dayNum := day.Day()
@@ -270,7 +318,6 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 			dots = []string{"empty"}
 		}
 		isToday := day.In(location.Location()).Day() == today
-		log.Println(isToday, day.Day())
 		dayDatas = append(dayDatas, DayData{Day: dayNum, Dots: dots, IsToday: isToday})
 	}
 
@@ -301,10 +348,12 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 		Month  string
 		Days   []DayData
 		Events []EventData
+		Scale  float64
 	}{
 		Month:  fmt.Sprintf("%s %d", getMonthName(days[0].Month()), days[0].Year()),
 		Days:   dayDatas,
 		Events: eventDatas,
+		Scale:  scale,
 	}
 
 	var buf bytes.Buffer
