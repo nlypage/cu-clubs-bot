@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"time"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/secondary"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
@@ -86,8 +88,8 @@ func (s *EventService) GetWithPagination(ctx context.Context, limit, offset int,
 	return s.repo.GetWithPagination(ctx, limit, offset, order, string(role), userID)
 }
 
-// GenerateWeeklyDigestImage generates an image of the weekly events digest
-func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([]byte, error) {
+// GenerateWeeklyDigestImage generates images of the weekly events digest
+func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([][]byte, error) {
 	// Group events by day
 	eventsByDay := make(map[time.Time][]entity.Event)
 	for _, event := range events {
@@ -132,7 +134,121 @@ func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([]byte,
 	html := generateDigestHTML(days, eventsByDay)
 
 	// Convert HTML to image using export-html
-	return htmlToImage(html, approxHeight)
+	image, err := htmlToImage(html, approxHeight)
+	if err != nil {
+		return nil, err
+	}
+	return [][]byte{image}, nil
+}
+
+func generateCalendarHTML(days []time.Time, eventsByDay map[time.Time][]entity.Event) string {
+	// Template for calendar
+	tmpl := template.Must(template.New("calendar").Parse(`
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>События недели</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #ececec;
+            padding: 0;
+            width: 640px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .page { width: 640px; margin: 0; background: #ececec; page-break-after: always; }
+        .calendar-page { padding: 40px; background: #ececec; text-align: center; }
+        .header { margin-bottom: 32px; }
+        .title { font-size: 36px; font-weight: 700; color: #000; margin-bottom: 8px; }
+        .month { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .calendar-dates-wrapper { margin-top: 32px; margin-bottom: 32px; }
+        .dates-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 40px; position: relative; padding-bottom: 10px; margin-bottom: 16px; }
+        .dates-row::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: #dddddd; }
+        .dots-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 40px; }
+        .day-number-cell { text-align: center; font-size: 12px; color: #999; font-weight: 500; }
+        .day-number-cell.today { font-weight: 700; color: #000; }
+        .day-dots-cell { text-align: center; display: flex; justify-content: center; }
+        .day-dots { display: flex; flex-direction: column; gap: 5px; max-height: 55px; flex-wrap: wrap; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+        .dot.empty { background: #c0c0c0; }
+        .dot.orange { background: #ff8642; }
+        .legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+        .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; background: #fff; border-radius: 4px; }
+        @media print { body { margin: 0; padding: 0; } }
+    </style>
+</head>
+<body>
+<div class="page calendar-page">
+    <div class="header">
+        <h1 class="title">События недели</h1>
+        <p class="month">{{.Month}}</p>
+    </div>
+    <div class="calendar-dates-wrapper">
+        <div class="dates-row">
+            {{range .Days}}<div class="day-number-cell{{if .IsToday}} today{{end}}">{{.Day}}</div>{{end}}
+        </div>
+        <div class="dots-row">
+            {{range .Days}}
+            <div class="day-dots-cell">
+                <div class="day-dots">
+                    {{range .Dots}}<div class="dot {{.}}"></div>{{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    <div class="legend">
+        <div class="legend-item" style="background: #ff8642;">
+            <span style="color: white;">КЛУБЫ</span>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+`))
+
+	// Prepare data
+	type DayData struct {
+		Day     int
+		Dots    []string
+		IsToday bool
+	}
+
+	today := time.Now().In(location.Location()).Truncate(24 * time.Hour)
+	var dayDatas []DayData
+	for _, day := range days {
+		dayNum := day.Day()
+		events := eventsByDay[day]
+		var dots []string
+		for range events {
+			dots = append(dots, "orange")
+		}
+		if len(dots) == 0 {
+			dots = []string{"empty"}
+		}
+		isToday := day.Equal(today)
+		dayDatas = append(dayDatas, DayData{Day: dayNum, Dots: dots, IsToday: isToday})
+	}
+
+	data := struct {
+		Month string
+		Days  []DayData
+	}{
+		Month: fmt.Sprintf("%s %d", getMonthName(days[0].Month()), days[0].Year()),
+		Days:  dayDatas,
+	}
+
+	var buf bytes.Buffer
+	err := tmpl.Execute(&buf, data)
+	if err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Event) string {
@@ -165,6 +281,7 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
         .dates-row::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: #dddddd; }
         .dots-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 40px; }
         .day-number-cell { text-align: center; font-size: 12px; color: #999; font-weight: 500; }
+        .day-number-cell.today { font-weight: 700; color: #000; }
         .day-dots-cell { text-align: center; display: flex; justify-content: center; }
         .day-dots { display: flex; flex-direction: column; gap: 5px; max-height: 55px; flex-wrap: wrap; }
         .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -194,7 +311,7 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
     </div>
     <div class="calendar-dates-wrapper">
         <div class="dates-row">
-            {{range .Days}}<div class="day-number-cell">{{.Day}}</div>{{end}}
+            {{range .Days}}<div class="day-number-cell{{if .IsToday}} today{{end}}">{{.Day}}</div>{{end}}
         </div>
         <div class="dots-row">
             {{range .Days}}
@@ -238,8 +355,9 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 
 	// Prepare data
 	type DayData struct {
-		Day  int
-		Dots []string
+		Day     int
+		Dots    []string
+		IsToday bool
 	}
 	type EventData struct {
 		Date         string
@@ -248,6 +366,8 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 		Description  string
 	}
 
+	today := time.Now().In(location.Location()).Day()
+	log.Println(today)
 	var dayDatas []DayData
 	for _, day := range days {
 		dayNum := day.Day()
@@ -259,7 +379,9 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 		if len(dots) == 0 {
 			dots = []string{"empty"}
 		}
-		dayDatas = append(dayDatas, DayData{Day: dayNum, Dots: dots})
+		isToday := day.In(location.Location()).Day() == today
+		log.Println(isToday, day.Day())
+		dayDatas = append(dayDatas, DayData{Day: dayNum, Dots: dots, IsToday: isToday})
 	}
 
 	var eventDatas []EventData
@@ -305,18 +427,18 @@ func generateDigestHTML(days []time.Time, eventsByDay map[time.Time][]entity.Eve
 
 func getMonthName(month time.Month) string {
 	months := map[time.Month]string{
-		time.January:   "января",
-		time.February:  "февраля",
-		time.March:     "марта",
-		time.April:     "апреля",
-		time.May:       "мая",
-		time.June:      "июня",
-		time.July:      "июля",
-		time.August:    "августа",
-		time.September: "сентября",
-		time.October:   "октября",
-		time.November:  "ноября",
-		time.December:  "декабря",
+		time.January:   "январь",
+		time.February:  "февраль",
+		time.March:     "март",
+		time.April:     "апрель",
+		time.May:       "май",
+		time.June:      "июнь",
+		time.July:      "июль",
+		time.August:    "август",
+		time.September: "сентябрь",
+		time.October:   "октябрь",
+		time.November:  "ноябрь",
+		time.December:  "декабрь",
 	}
 	return months[month]
 }

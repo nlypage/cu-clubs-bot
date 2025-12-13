@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -511,7 +512,9 @@ func (h Handler) eventsList(c tele.Context) error {
 		rows        []tele.Row
 		menuRow     tele.Row
 	)
-	if c.Callback().Unique != "mainMenu_events" {
+	if c.Callback().Unique == "digest_events" {
+		p = 0
+	} else if c.Callback().Unique != "mainMenu_events" {
 		p, err = strconv.Atoi(c.Callback().Data)
 		if err != nil {
 			return errorz.ErrInvalidCallbackData
@@ -616,7 +619,7 @@ func (h Handler) eventsList(c tele.Context) error {
 	rows = append(
 		rows,
 		menuRow,
-		markup.Row(*h.layout.Button(c, "mainMenu:back")),
+		markup.Row(*h.layout.Button(c, "digest:back")),
 	)
 
 	markup.Inline(rows...)
@@ -1944,10 +1947,12 @@ func (h Handler) UserSetup(group *tele.Group) {
 	group.Handle(h.layout.Callback("cuClubs:club:intro:back"), h.clubIntro)
 	group.Handle(h.layout.Callback("cuClubs:club:about"), h.clubAbout)
 
-	group.Handle(h.layout.Callback("mainMenu:events"), h.eventsList)
+	group.Handle(h.layout.Callback("mainMenu:events"), h.digest)
+	group.Handle(h.layout.Callback("digest:events"), h.eventsList)
+	group.Handle(h.layout.Callback("digest:back"), h.digest)
 	group.Handle(h.layout.Callback("user:events:prev_page"), h.eventsList)
 	group.Handle(h.layout.Callback("user:events:next_page"), h.eventsList)
-	group.Handle(h.layout.Callback("user:events:back"), h.eventsList)
+	group.Handle(h.layout.Callback("user:events:back"), h.digest)
 	group.Handle(h.layout.Callback("user:events:event"), h.event)
 	group.Handle(h.layout.Callback("user:events:event:cancel_registration"), h.eventCancelRegistration)
 	group.Handle(h.layout.Callback("user:myEvents:event:export"), h.eventExportToICS)
@@ -1967,4 +1972,115 @@ func (h Handler) UserSetup(group *tele.Group) {
 	group.Handle(h.layout.Callback("mainMenu:qr"), h.qrCode)
 
 	group.Handle(h.layout.Callback("mailing:switch"), h.mailingSwitch)
+}
+
+func (h Handler) digest(c tele.Context) error {
+	h.logger.Infof("(user: %d) send digest", c.Sender().ID)
+
+	botUsername := c.Bot().Me.Username
+
+	// Get events for the week
+	now := time.Now()
+	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+	if now.Weekday() == time.Sunday {
+		startOfWeek = now.AddDate(0, 0, -6)
+	}
+	endOfWeek := startOfWeek.AddDate(0, 0, 7)
+
+	allEvents, err := h.eventService.GetAll(context.Background())
+	if err != nil {
+		h.logger.Errorf("(user: %d) error getting all events: %v", c.Sender().ID, err)
+		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
+	}
+
+	var weeklyEvents []entity.Event
+	for _, event := range allEvents {
+		if event.StartTime.After(startOfWeek.AddDate(0, 0, -1)) && event.StartTime.Before(endOfWeek) {
+			weeklyEvents = append(weeklyEvents, event)
+		}
+	}
+
+	if len(weeklyEvents) == 0 {
+		return c.Send("На этой неделе мероприятий нет.", h.layout.Markup(c, "digest:back"))
+	}
+
+	// Generate digest images
+	images, err := h.eventService.GenerateWeeklyDigestImage(weeklyEvents)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error generating digest: %v", c.Sender().ID, err)
+		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
+	}
+
+	// Edit message to single image with caption and buttons
+	imageBytes := images[0]
+	photo := &tele.Photo{
+		File:    tele.FromReader(bytes.NewReader(imageBytes)),
+		Caption: h.generateDigestText(weeklyEvents, botUsername),
+	}
+	markup := h.layout.Markup(c, "digest:menu")
+	return c.Edit(photo, markup)
+}
+
+func (h Handler) generateDigestText(events []entity.Event, botUsername string) string {
+	// Group events by day
+	eventsByDay := make(map[string][]entity.Event)
+	for _, event := range events {
+		day := event.StartTime.In(time.Local).Format("2006-01-02")
+		eventsByDay[day] = append(eventsByDay[day], event)
+	}
+
+	// Sort days
+	var days []string
+	for day := range eventsByDay {
+		days = append(days, day)
+	}
+	sort.Strings(days)
+
+	text := "<b>Дайджест мероприятий на неделю</b>\n\n"
+
+	for _, dayStr := range days {
+		parts := strings.Split(dayStr, "-")
+		year, _ := strconv.Atoi(parts[0])
+		month, _ := strconv.Atoi(parts[1])
+		dayInt, _ := strconv.Atoi(parts[2])
+		date := time.Date(year, time.Month(month), dayInt, 0, 0, 0, 0, location.Location())
+		weekday := date.Weekday()
+		weekdayName := map[time.Weekday]string{
+			time.Monday:    "Понедельник",
+			time.Tuesday:   "Вторник",
+			time.Wednesday: "Среда",
+			time.Thursday:  "Четверг",
+			time.Friday:    "Пятница",
+			time.Saturday:  "Суббота",
+			time.Sunday:    "Воскресенье",
+		}[weekday]
+
+		text += fmt.Sprintf("<b>%s (%d %s):</b>\n\n", weekdayName, dayInt, getMonthName(date.Month()))
+
+		for _, event := range eventsByDay[dayStr] {
+			link := fmt.Sprintf("https://t.me/%s?start=event_%s", botUsername, event.ID)
+			text += fmt.Sprintf("➡️ <a href=\"%s\">%s</a>\n", link, event.Name)
+		}
+		text += "\n"
+	}
+
+	return text
+}
+
+func getMonthName(month time.Month) string {
+	months := map[time.Month]string{
+		time.January:   "января",
+		time.February:  "февраля",
+		time.March:     "марта",
+		time.April:     "апреля",
+		time.May:       "мая",
+		time.June:      "июня",
+		time.July:      "июля",
+		time.August:    "августа",
+		time.September: "сентября",
+		time.October:   "октября",
+		time.November:  "ноября",
+		time.December:  "декабря",
+	}
+	return months[month]
 }

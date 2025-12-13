@@ -76,6 +76,14 @@ buttons:
     unique: mainMenu_back
     text: '{{ text `back` }}'
 
+  digest:events:
+    unique: digest_events
+    text: '{{ text `events_list_btn` }}'
+
+  digest:back:
+    unique: digest_back
+    text: '{{ text `back` }}'
+
   personalAccount:my_events:
     unique: personalAccount_myEvents
     text: '{{ text `my_events` }}'
@@ -596,15 +604,20 @@ markups:
     - [ auth:resend_email ]
     - [ auth:back_to_menu ]
 
-#  mainMenu:menu:
-#    - [ mainMenu:events, mainMenu:my_events ]
-#    - [ mainMenu:qr ]
   mainMenu:menu:
     - [ mainMenu:cuClubs, mainMenu:events ]
     - [ mainMenu:personalAccount ]
     - [ mainMenu:qr ]
+
   mainMenu:back:
     - [ mainMenu:back ]
+
+  digest:menu:
+    - [ digest:events ]
+    - [ mainMenu:back ]
+
+  digest:back:
+    - [ digest:back ]
 
   mailing:
     - [ mailing:switch ]

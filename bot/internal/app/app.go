@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/primary/telegram/bot"
@@ -34,9 +35,18 @@ func NewApp(ctx context.Context) (*App, error) {
 
 // Run starts the application.
 func (a *App) Run() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Error("Panic in Run", zap.Any("panic", r))
+		}
+	}()
 	defer a.gracefulShutdown()
 
 	logger.Log.Info("Bot starting")
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Setup bot handlers
 	debug := a.serviceProvider.Cfg().Logger.Debug()
@@ -53,33 +63,61 @@ func (a *App) Run() {
 		adminIDs,
 	)
 
-	// Setup signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Start bot in goroutine
+	// Start bot in goroutine to catch panics
+	errChan := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errChan <- fmt.Errorf("bot panic: %v", r)
+			}
+		}()
 		a.serviceProvider.Bot().Start()
 	}()
 
 	// Start notification scheduler
-	a.serviceProvider.NotifyService().StartNotifyScheduler()
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Error("Panic in StartNotifyScheduler", zap.Any("panic", r))
+			}
+		}()
+		a.serviceProvider.NotifyService().StartNotifyScheduler()
+	}()
 
 	// Start pass scheduler
-	err := a.serviceProvider.PassService().StartScheduler()
-	if err != nil {
-		logger.Log.Errorf("failed to start pass scheduler: %v", err)
-	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Error("Panic in StartScheduler pass", zap.Any("panic", r))
+			}
+		}()
+		err := a.serviceProvider.PassService().StartScheduler()
+		if err != nil {
+			logger.Log.Errorf("failed to start pass scheduler: %v", err)
+		}
+	}()
 
 	// Start club owner reminder scheduler
-	err = a.serviceProvider.NotifyService().StartClubOwnerReminderScheduler()
-	if err != nil {
-		logger.Log.Errorf("failed to start club owner reminder scheduler: %v", err)
-	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Error("Panic in StartClubOwnerReminderScheduler", zap.Any("panic", r))
+			}
+		}()
+		err := a.serviceProvider.NotifyService().StartClubOwnerReminderScheduler()
+		if err != nil {
+			logger.Log.Errorf("failed to start club owner reminder scheduler: %v", err)
+		}
+	}()
 
-	// Wait for shutdown signal
-	sig := <-sigChan
-	logger.Log.Infof("Received signal %v, starting graceful shutdown...", sig)
+	// Wait for shutdown signal or error
+	select {
+	case err := <-errChan:
+		logger.Log.Error("Bot error", zap.Error(err))
+		return
+	case sig := <-sigChan:
+		logger.Log.Error("Received signal, starting graceful shutdown", zap.String("signal", sig.String()))
+	}
 }
 
 // gracefulShutdown handles cleanup of all resources
