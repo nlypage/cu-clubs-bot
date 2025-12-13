@@ -1976,6 +1976,8 @@ func (h Handler) UserSetup(group *tele.Group) {
 
 func (h Handler) digest(c tele.Context) error {
 	h.logger.Infof("(user: %d) send digest", c.Sender().ID)
+	_ = c.Delete()
+	loading, _ := c.Bot().Send(c.Chat(), h.layout.Text(c, "loading"))
 
 	botUsername := c.Bot().Me.Username
 
@@ -2018,7 +2020,9 @@ func (h Handler) digest(c tele.Context) error {
 		Caption: h.generateDigestText(weeklyEvents, botUsername),
 	}
 	markup := h.layout.Markup(c, "digest:menu")
-	return c.Edit(photo, markup)
+
+	_ = c.Bot().Delete(loading)
+	return c.Send(photo, markup)
 }
 
 func (h Handler) generateDigestText(events []entity.Event, botUsername string) string {
