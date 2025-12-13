@@ -1,6 +1,7 @@
 package start
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/secondary/redis/emails"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/secondary/redis/events"
 
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/banner"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/primary"
 	"github.com/Badsnus/cu-clubs-bot/bot/pkg/logger/types"
@@ -109,6 +111,13 @@ func (h Handler) Start(c tele.Context) error {
 				h.layout.Markup(c, "core:hide"),
 			)
 		}
+
+		// Send weekly digest image
+		err = h.sendWeeklyDigest(c)
+		if err != nil {
+			h.logger.Errorf("(user: %d) error sending weekly digest: %v", c.Sender().ID, err)
+		}
+
 		return h.menuHandler.SendMenu(c)
 	}
 
@@ -155,4 +164,41 @@ func (h Handler) Start(c tele.Context) error {
 			h.layout.Markup(c, "core:hide"),
 		)
 	}
+}
+
+func (h *Handler) sendWeeklyDigest(c tele.Context) error {
+	// Get all events
+	allEvents, err := h.eventService.GetAll(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// Filter future events for the current week
+	now := time.Now()
+	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+	if now.Weekday() == time.Sunday {
+		startOfWeek = now.AddDate(0, 0, -6)
+	}
+	endOfWeek := startOfWeek.AddDate(0, 0, 7)
+
+	var weeklyEvents []entity.Event
+	for _, event := range allEvents {
+		if event.StartTime.After(now) && event.StartTime.Before(endOfWeek) {
+			weeklyEvents = append(weeklyEvents, event)
+		}
+	}
+
+	if len(weeklyEvents) == 0 {
+		return nil // No events, skip sending
+	}
+
+	// Generate digest image
+	imageBytes, err := h.eventService.GenerateWeeklyDigestImage(weeklyEvents)
+	if err != nil {
+		return err
+	}
+
+	// Send image
+	photo := &tele.Photo{File: tele.FromReader(bytes.NewReader(imageBytes))}
+	return c.Send(photo)
 }

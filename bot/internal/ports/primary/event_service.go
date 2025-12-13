@@ -23,4 +23,5 @@ type EventService interface {
 	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context, role valueobject.Role) (int64, error)
 	GetWithPagination(ctx context.Context, limit, offset int, order string, role valueobject.Role, userID int64) ([]dto.Event, error)
+	GenerateWeeklyDigestImage(events []entity.Event) ([]byte, error)
 }

@@ -45,6 +45,13 @@ services:
       - redis-data:/data
     restart: always
 
+  export-html:
+    container_name: export-html
+    image: bedrockio/export-html:latest
+    expose:
+      - "2305"
+    restart: always
+
 volumes:
   database:
   backups_database:
