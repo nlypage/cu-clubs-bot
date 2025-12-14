@@ -151,7 +151,7 @@ func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([][]byt
 	for _, evs := range eventsByDay {
 		totalEvents += len(evs)
 	}
-	calculatedHeight := 400 + totalEvents*60 + 100 // add bottom margin
+	calculatedHeight := 400 + totalEvents*60 + 175
 	scale := 1.0
 	maxHeight := 2000
 	clipHeight := calculatedHeight
