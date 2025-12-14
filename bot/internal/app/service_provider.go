@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
+
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/secondary/smtp"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/secondary"
 
@@ -113,7 +115,7 @@ func (s *serviceProvider) DB() *gorm.DB {
 		}
 
 		// Set location
-		time.Local = s.cfg.Logger.TimeLocation()
+		time.Local = location.Location()
 
 		dsn := s.cfg.PG.DSN()
 
