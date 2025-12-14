@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1988,12 +1989,27 @@ func (h Handler) digest(c tele.Context) error {
 		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
 	}
 
-	if len(weeklyEvents) == 0 {
+	// Get user for role filtering
+	user, err := h.userService.Get(context.Background(), c.Sender().ID)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error getting user: %v", c.Sender().ID, err)
+		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
+	}
+
+	// Filter events by user role
+	var filteredEvents []entity.Event
+	for _, event := range weeklyEvents {
+		if len(event.AllowedRoles) == 0 || slices.Contains(event.AllowedRoles, user.Role.String()) {
+			filteredEvents = append(filteredEvents, event)
+		}
+	}
+
+	if len(filteredEvents) == 0 {
 		return c.Send("На этой неделе мероприятий нет.", h.layout.Markup(c, "digest:menu"))
 	}
 
 	// Generate digest images
-	images, err := h.eventService.GenerateWeeklyDigestImage(weeklyEvents)
+	images, err := h.eventService.GenerateWeeklyDigestImage(filteredEvents)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error generating digest: %v", c.Sender().ID, err)
 		return c.Send(h.layout.Text(c, "technical_issues", err.Error()))
@@ -2003,7 +2019,7 @@ func (h Handler) digest(c tele.Context) error {
 	imageBytes := images[0]
 	photo := &tele.Photo{
 		File:    tele.FromReader(bytes.NewReader(imageBytes)),
-		Caption: h.generateDigestText(weeklyEvents, botUsername),
+		Caption: h.generateDigestText(filteredEvents, botUsername),
 	}
 	markup := h.layout.Markup(c, "digest:menu")
 
