@@ -6,11 +6,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"gopkg.in/gomail.v2"
 	postgresDriver "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
+
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/adapters/secondary/smtp"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/secondary"

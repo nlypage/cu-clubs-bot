@@ -135,33 +135,16 @@ func generateWeekDays(startOfWeek time.Time) []time.Time {
 }
 
 func (s *EventService) GenerateWeeklyDigestImage(events []entity.Event) ([][]byte, error) {
-	eventsByDay := groupEventsByDay(events)
-
-	// Find startOfWeek from the events
-	var startOfWeek time.Time
-	if len(events) > 0 {
-		// Use the earliest event day
-		minDay := events[0].StartTime.In(location.Location()).Truncate(24 * time.Hour)
-		for _, event := range events {
-			day := event.StartTime.In(location.Location()).Truncate(24 * time.Hour)
-			if day.Before(minDay) {
-				minDay = day
-			}
-		}
-		startOfWeek = minDay
-		for startOfWeek.Weekday() != time.Monday {
-			startOfWeek = startOfWeek.AddDate(0, 0, -1)
-		}
-	} else {
-		// If no events, use current week
-		now := time.Now().In(location.Location())
-		startOfWeek = now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
-		if now.Weekday() == time.Sunday {
-			startOfWeek = now.AddDate(0, 0, -6)
-		}
+	// Always use current week starting from Monday
+	now := time.Now().In(location.Location())
+	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+	if now.Weekday() == time.Sunday {
+		startOfWeek = now.AddDate(0, 0, -6)
 	}
+	startOfWeek = startOfWeek.Truncate(24 * time.Hour)
 
 	days := generateWeekDays(startOfWeek)
+	eventsByDay := groupEventsByDay(events)
 
 	// Calculate approximate height: base 400px (calendar) + 60px per event, max 2000px
 	totalEvents := 0

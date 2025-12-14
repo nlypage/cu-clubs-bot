@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1990,7 +1989,7 @@ func (h Handler) digest(c tele.Context) error {
 	}
 
 	if len(weeklyEvents) == 0 {
-		return c.Send("На этой неделе мероприятий нет.", h.layout.Markup(c, "digest:back"))
+		return c.Send("На этой неделе мероприятий нет.", h.layout.Markup(c, "digest:menu"))
 	}
 
 	// Generate digest images
@@ -2014,28 +2013,30 @@ func (h Handler) digest(c tele.Context) error {
 
 func (h Handler) generateDigestText(events []entity.Event, botUsername string) string {
 	// Group events by day
-	eventsByDay := make(map[string][]entity.Event)
+	eventsByDay := make(map[time.Time][]entity.Event)
 	for _, event := range events {
-		day := event.StartTime.In(location.Location()).Format("2006-01-02")
+		day := event.StartTime.In(location.Location()).Truncate(24 * time.Hour)
 		eventsByDay[day] = append(eventsByDay[day], event)
 	}
 
-	// Sort days
-	var days []string
-	for day := range eventsByDay {
-		days = append(days, day)
+	// Always use current week starting from Monday
+	now := time.Now().In(location.Location())
+	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()-time.Monday))
+	if now.Weekday() == time.Sunday {
+		startOfWeek = now.AddDate(0, 0, -6)
 	}
-	sort.Strings(days)
+	startOfWeek = startOfWeek.Truncate(24 * time.Hour)
+
+	// Generate 7 days
+	var days []time.Time
+	for i := 0; i < 7; i++ {
+		days = append(days, startOfWeek.AddDate(0, 0, i))
+	}
 
 	text := "<b>Дайджест мероприятий на неделю</b>\n\n"
 
-	for _, dayStr := range days {
-		parts := strings.Split(dayStr, "-")
-		year, _ := strconv.Atoi(parts[0])
-		month, _ := strconv.Atoi(parts[1])
-		dayInt, _ := strconv.Atoi(parts[2])
-		date := time.Date(year, time.Month(month), dayInt, 0, 0, 0, 0, location.Location())
-		weekday := date.Weekday()
+	for _, day := range days {
+		weekday := day.Weekday()
 		weekdayName := map[time.Weekday]string{
 			time.Monday:    "Понедельник",
 			time.Tuesday:   "Вторник",
@@ -2046,17 +2047,22 @@ func (h Handler) generateDigestText(events []entity.Event, botUsername string) s
 			time.Sunday:    "Воскресенье",
 		}[weekday]
 
-		text += fmt.Sprintf("<b>%s (%d %s):</b>\n\n", weekdayName, dayInt, getMonthName(date.Month()))
+		text += fmt.Sprintf("<b>%s (%d %s):</b>\n\n", weekdayName, day.Day(), getMonthName(day.Month()))
 
-		for _, event := range eventsByDay[dayStr] {
-			if time.Now().In(location.Location()).After(event.RegistrationEnd) {
-				text += fmt.Sprintf("➡️ %s\n", event.Name)
-			} else {
-				link := fmt.Sprintf("https://t.me/%s?start=event_%s", botUsername, event.ID)
-				text += fmt.Sprintf("➡️ <a href=\"%s\">%s</a>\n", link, event.Name)
+		dayEvents := eventsByDay[day]
+		if len(dayEvents) == 0 {
+			text += "<i>В этот день нет мероприятий</i>\n\n"
+		} else {
+			for _, event := range dayEvents {
+				if time.Now().In(location.Location()).After(event.RegistrationEnd) {
+					text += fmt.Sprintf("➡️ %s\n", event.Name)
+				} else {
+					link := fmt.Sprintf("https://t.me/%s?start=event_%s", botUsername, event.ID)
+					text += fmt.Sprintf("➡️ <a href=\"%s\">%s</a>\n", link, event.Name)
+				}
 			}
+			text += "\n"
 		}
-		text += "\n"
 	}
 
 	return text
