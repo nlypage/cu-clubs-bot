@@ -226,6 +226,7 @@ func (s *PassService) StartScheduler() error {
 		s.logger.Debugf("Successfully added cron job for config %s", configName)
 	}
 
+	s.cron.Start()
 	s.schedulerStarted = true
 	entries := s.cron.Entries()
 	s.logger.Infof("Pass scheduler started with %d jobs", len(entries))

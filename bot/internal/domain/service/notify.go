@@ -153,6 +153,7 @@ func (s *NotifyService) StartClubOwnerReminderScheduler() error {
 		return err
 	}
 
+	s.cron.Start()
 	s.logger.Info("Club owner reminder scheduler initialized")
 	return nil
 }
