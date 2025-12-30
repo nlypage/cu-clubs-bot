@@ -725,7 +725,6 @@ func (h Handler) event(c tele.Context) error {
 		if !registered {
 			var roleAllowed bool
 			var registrationActive bool
-			var userSubscribed bool
 			for _, role := range event.AllowedRoles {
 				if role == string(user.Role) {
 					roleAllowed = true
@@ -738,24 +737,25 @@ func (h Handler) event(c tele.Context) error {
 				registrationActive = utils.GetMaxRegisteredEndTime(event.StartTime).After(time.Now().In(location.Location())) && event.RegistrationEnd.After(time.Now().In(location.Location()))
 			}
 
-			if club.SubscriptionRequired && club.ChannelID != nil {
-				member, err := c.Bot().ChatMemberOf(&tele.Chat{ID: *club.ChannelID}, &tele.User{ID: c.Sender().ID})
-				if err != nil {
-					h.logger.Errorf("(user: %d) error while verification user's membership in the club channel: %v", c.Sender().ID, err)
-					return c.Send(
-						banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
-						h.layout.Markup(c, "core:hide"),
-					)
-				}
+			needToSubscribe := make([]int64, 0)
+			if club.SubscriptionRequired {
+				for _, chatID := range club.ChannelsIDs {
+					member, err := c.Bot().ChatMemberOf(&tele.Chat{ID: chatID}, &tele.User{ID: c.Sender().ID})
+					if err != nil {
+						h.logger.Errorf("(user: %d) error while verification user's membership in the club channel: %v", c.Sender().ID, err)
+						return c.Send(
+							banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+							h.layout.Markup(c, "core:hide"),
+						)
+					}
 
-				if member.Role == tele.Creator || member.Role == tele.Administrator || member.Role == tele.Member {
-					userSubscribed = true
+					if member.Role != tele.Creator && member.Role != tele.Administrator && member.Role != tele.Member {
+						needToSubscribe = append(needToSubscribe, chatID)
+					}
 				}
-			} else {
-				userSubscribed = true
 			}
 
-			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants) && registrationActive && roleAllowed && userSubscribed {
+			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants) && registrationActive && roleAllowed && len(needToSubscribe) == 0 {
 				_, err = h.eventParticipantService.Register(context.Background(), eventID, c.Sender().ID)
 				if err != nil {
 					h.logger.Errorf("(user: %d) error while register to event: %v", c.Sender().ID, err)
@@ -818,21 +818,25 @@ func (h Handler) event(c tele.Context) error {
 						Text:      h.layout.Text(c, "not_allowed_role"),
 						ShowAlert: true,
 					})
-				case !userSubscribed:
-					chat, err := c.Bot().ChatByID(*club.ChannelID)
-					if err != nil {
-						h.logger.Errorf("(user: %d) error while get chat: %v", c.Sender().ID, err)
-						return c.Send(
-							banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
-							h.layout.Markup(c, "core:hide"),
-						)
+				case len(needToSubscribe) > 0:
+					channelsNames := make([]string, 0)
+					for _, chatID := range needToSubscribe {
+						chat, err := c.Bot().ChatByID(chatID)
+						if err != nil {
+							h.logger.Errorf("(user: %d) error while get chat: %v", c.Sender().ID, err)
+							return c.Send(
+								banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+								h.layout.Markup(c, "core:hide"),
+							)
+						}
+						channelsNames = append(channelsNames, chat.Username)
 					}
 
 					return c.Send(
 						banner.Events.Caption(h.layout.Text(c, "user_not_subscribed", struct {
-							ChannelName string
+							ChannelsNames []string
 						}{
-							ChannelName: chat.Username,
+							ChannelsNames: channelsNames,
 						})),
 						h.layout.Markup(c, "core:hide"),
 					)
