@@ -1273,9 +1273,9 @@ func (h Handler) subscriptionAccess(c tele.Context) error {
 		}
 	}
 
-	var channelName *string
-	if club.ChannelID != nil {
-		chat, err := c.Bot().ChatByID(*club.ChannelID)
+	channelsNames := make([]string, len(club.ChannelsIDs))
+	for i, id := range club.ChannelsIDs {
+		chat, err := c.Bot().ChatByID(id)
 		if err != nil {
 			h.logger.Errorf("(user: %d) error while get channel: %v", c.Sender().ID, err)
 			return c.Send(
@@ -1288,14 +1288,14 @@ func (h Handler) subscriptionAccess(c tele.Context) error {
 			)
 		}
 
-		channelName = &chat.Username
+		channelsNames[i] = chat.Username
 	}
 
 	return c.Edit(
 		banner.ClubOwner.Caption(h.layout.Text(c, "subscription_access_text", struct {
-			ChannelName *string
+			ChannelsNames []string
 		}{
-			ChannelName: channelName,
+			ChannelsNames: channelsNames,
 		})),
 		h.layout.Markup(c, "clubOwner:club:settings:subscription_access", struct {
 			ID                   string
@@ -1307,8 +1307,8 @@ func (h Handler) subscriptionAccess(c tele.Context) error {
 	)
 }
 
-func (h Handler) setChannelID(c tele.Context) error {
-	h.logger.Infof("(user: %d) set club channel id", c.Sender().ID)
+func (h Handler) addChannelID(c tele.Context) error {
+	h.logger.Infof("(user: %d) add club channel id", c.Sender().ID)
 
 	club, err := h.clubService.Get(context.Background(), c.Callback().Data)
 	if err != nil {
@@ -1394,10 +1394,10 @@ func (h Handler) setChannelID(c tele.Context) error {
 		}
 	}
 
-	club.ChannelID = &channelID
+	club.ChannelsIDs = append(club.ChannelsIDs, channelID)
 	_, err = h.clubService.Update(context.Background(), club)
 	if err != nil {
-		h.logger.Errorf("(user: %d) error while update channel id: %v", c.Sender().ID, err)
+		h.logger.Errorf("(user: %d) error while add channel id: %v", c.Sender().ID, err)
 		return c.Send(
 			banner.ClubOwner.Caption(h.layout.Text(c, "technical_issues", err.Error())),
 			h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
@@ -1409,7 +1409,7 @@ func (h Handler) setChannelID(c tele.Context) error {
 	}
 
 	return c.Send(
-		banner.ClubOwner.Caption(h.layout.Text(c, "channel_id_set")),
+		banner.ClubOwner.Caption(h.layout.Text(c, "channel_id_add")),
 		h.layout.Markup(c, "clubOwner:club:settings:subscription_access:back", struct {
 			ID string
 		}{
@@ -3922,7 +3922,7 @@ func (h Handler) ClubOwnerSetup(group *tele.Group, middle *middlewares.Handler) 
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:should_show"), h.shouldShow)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access"), h.subscriptionAccess)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:required"), h.subscriptionAccess)
-	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:set_channel_id"), h.setChannelID)
+	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:add_channel_id"), h.addChannelID)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:subscription_access:back"), h.subscriptionAccess)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:profile:back"), h.profile)
 	group.Handle(h.layout.Callback("clubOwner:club:settings:warnings:user"), h.warnings)
