@@ -239,10 +239,10 @@ buttons:
     callback_data: '{{.ID}}'
     text: '{{if .SubscriptionRequired }}{{ text `tick` }}{{else}}{{text `cross` }}{{end}} {{ text `subscription_require_allowed` }}'
 
-  clubOwner:club:settings:subscription_access:add_channel_id:
-    unique: clOwner_club_add_chan_id
+  clubOwner:club:settings:subscription_access:set_channel_id:
+    unique: clOwner_club_set_chan_id
     callback_data: '{{.ID}}'
-    text: '{{ text `add_channel_id` }}'
+    text: '{{ text `set_channel_id` }}'
 
   clubOwner:club:settings:subscription_access:back:
     unique: clOwner_cl_sub_acs_back
@@ -689,7 +689,7 @@ markups:
     - [ clubOwner:club:settings:profile:back ]
   clubOwner:club:settings:subscription_access:
     - [ clubOwner:club:settings:subscription_access:required ]
-    - [ clubOwner:club:settings:subscription_access:add_channel_id ]
+    - [ clubOwner:club:settings:subscription_access:set_channel_id ]
     - [ clubOwner:club:settings:back ]
   clubOwner:club:settings:subscription_access:back:
     - [ clubOwner:club:settings:subscription_access:back ]

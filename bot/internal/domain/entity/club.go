@@ -27,5 +27,4 @@ type Club struct {
 	SubscriptionRequireAllowed bool `gorm:"default:false"`
 	SubscriptionRequired       bool `gorm:"default:false"`
 	ChannelID                  *int64
-	ChannelsIDs                pq.Int64Array `gorm:"type:bigint[]"`
 }
