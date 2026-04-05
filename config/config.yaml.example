@@ -48,6 +48,9 @@ settings:
         location-substrings:
             - "Гашека 7"
 
+        shadow-ban-name-surnames:
+            - "Иван Иванов"
+
     html:
       email-confirmation: "./mail.html"
 

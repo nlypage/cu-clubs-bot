@@ -8,6 +8,7 @@ import (
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/shadowban"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/valueobject"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/secondary"
 
@@ -20,6 +21,7 @@ type UserService struct {
 	smtpClient           secondary.SMTPClient
 
 	emailHTMLFilePath string
+	shadowMatcher     *shadowban.Matcher
 }
 
 func NewUserService(
@@ -27,6 +29,7 @@ func NewUserService(
 	eventParticipantRepo secondary.EventParticipantRepository,
 	smtpClient secondary.SMTPClient,
 	emailHTMLFilePath string,
+	shadowBanNameSurnames []string,
 ) *UserService {
 	return &UserService{
 		userRepo:             userRepo,
@@ -34,6 +37,7 @@ func NewUserService(
 		smtpClient:           smtpClient,
 
 		emailHTMLFilePath: emailHTMLFilePath,
+		shadowMatcher:     shadowban.NewMatcher(shadowBanNameSurnames),
 	}
 }
 
@@ -90,15 +94,30 @@ func (s *UserService) Ban(ctx context.Context, userID int64) (*entity.User, erro
 }
 
 func (s *UserService) GetUsersByEventID(ctx context.Context, eventID string) ([]entity.User, error) {
-	return s.userRepo.GetUsersByEventID(ctx, eventID)
+	users, err := s.userRepo.GetUsersByEventID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.filterUsers(users), nil
 }
 
 func (s *UserService) GetEventUsers(ctx context.Context, eventID string) ([]dto.EventUser, error) {
-	return s.userRepo.GetEventUsers(ctx, eventID)
+	users, err := s.userRepo.GetEventUsers(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.filterEventUsers(users), nil
 }
 
 func (s *UserService) GetUsersByClubID(ctx context.Context, clubID string) ([]entity.User, error) {
-	return s.userRepo.GetUsersByClubID(ctx, clubID)
+	users, err := s.userRepo.GetUsersByClubID(ctx, clubID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.filterUsers(users), nil
 }
 
 func (s *UserService) GetUserEvents(ctx context.Context, userID int64, limit, offset int) ([]dto.UserEvent, error) {
@@ -165,4 +184,36 @@ func generateRandomCode(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bts)[:length], nil
+}
+
+func (s *UserService) filterUsers(users []entity.User) []entity.User {
+	if s.shadowMatcher == nil || len(users) == 0 {
+		return users
+	}
+
+	filtered := make([]entity.User, 0, len(users))
+	for _, user := range users {
+		if s.shadowMatcher.MatchUser(user) {
+			continue
+		}
+		filtered = append(filtered, user)
+	}
+
+	return filtered
+}
+
+func (s *UserService) filterEventUsers(users []dto.EventUser) []dto.EventUser {
+	if s.shadowMatcher == nil || len(users) == 0 {
+		return users
+	}
+
+	filtered := make([]dto.EventUser, 0, len(users))
+	for _, user := range users {
+		if s.shadowMatcher.MatchUser(user.User) {
+			continue
+		}
+		filtered = append(filtered, user)
+	}
+
+	return filtered
 }

@@ -20,6 +20,8 @@ type EventParticipantService interface {
 	CountUserEvents(ctx context.Context, userID int64) (int64, error)
 	MarkAsVisited(ctx context.Context, eventID string, userID int64, isUserQR, isEventQR bool) error
 	IsUserRegistered(ctx context.Context, eventID string, userID int64) (bool, error)
+	IsShadowBanned(ctx context.Context, userID int64) (bool, error)
+	CanCancelRegistration(ctx context.Context, eventID string) (bool, error)
 	BulkRegister(ctx context.Context, eventID string, userIDs []int64) ([]entity.EventParticipant, error)
 	GetVisitedParticipants(ctx context.Context, eventID string) ([]entity.EventParticipant, error)
 	GetNotVisitedParticipants(ctx context.Context, eventID string) ([]entity.EventParticipant, error)

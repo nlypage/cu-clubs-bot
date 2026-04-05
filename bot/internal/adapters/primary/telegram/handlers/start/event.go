@@ -191,6 +191,15 @@ func (h Handler) eventRegister(c tele.Context) error {
 
 	if c.Callback().Unique == "user_url_event_reg" {
 		if !registered {
+			isShadowBanned, err := h.eventParticipantService.IsShadowBanned(context.Background(), c.Sender().ID)
+			if err != nil {
+				h.logger.Errorf("(user: %d) error while checking shadow ban: %v", c.Sender().ID, err)
+				return c.Edit(
+					banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+					h.layout.Markup(c, "mainMenu:back"),
+				)
+			}
+
 			var user *entity.User
 			user, err = h.userService.Get(context.Background(), c.Sender().ID)
 			if err != nil {
@@ -233,7 +242,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 				userSubscribed = true
 			}
 
-			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants) && registrationActive && roleAllowed && userSubscribed {
+			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants || isShadowBanned) && registrationActive && roleAllowed && userSubscribed {
 				_, err = h.eventParticipantService.Register(context.Background(), eventID, c.Sender().ID)
 				if err != nil {
 					h.logger.Errorf("(user: %d) error while register to event: %v", c.Sender().ID, err)
@@ -243,7 +252,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 					)
 				}
 
-				if participantsCount+1 == event.ExpectedParticipants {
+				if !isShadowBanned && participantsCount+1 == event.ExpectedParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "expected_participants_reached_warning", struct {
 							Name              string
@@ -259,7 +268,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 					}
 				}
 
-				if participantsCount+1 == event.MaxParticipants {
+				if !isShadowBanned && participantsCount+1 == event.MaxParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "max_participants_reached_warning", struct {
 							Name              string
@@ -283,7 +292,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 						Text:      h.layout.Text(c, "registration_ended"),
 						ShowAlert: true,
 					})
-				case event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
+				case !isShadowBanned && event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "max_participants_reached"),
 						ShowAlert: true,

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/shadowban"
 	"github.com/Badsnus/cu-clubs-bot/bot/pkg/logger/types"
 )
 
@@ -54,6 +55,7 @@ type PassService struct {
 	cron             *cron.Cron
 	configs          map[string]*PassConfig
 	schedulerStarted bool
+	shadowMatcher    *shadowban.Matcher
 }
 
 func NewPassService(
@@ -66,6 +68,7 @@ func NewPassService(
 	smtpClient secondary.SMTPClient,
 	passEmails []string,
 	telegramChatID int64,
+	shadowBanNameSurnames []string,
 ) *PassService {
 	ps := &PassService{
 		bot:              bot,
@@ -78,6 +81,7 @@ func NewPassService(
 		cron:             cron.New(cron.WithLocation(location.Location())),
 		configs:          make(map[string]*PassConfig),
 		schedulerStarted: false,
+		shadowMatcher:    shadowban.NewMatcher(shadowBanNameSurnames),
 	}
 
 	weekdayConfig := &PassConfig{
@@ -341,7 +345,7 @@ func (s *PassService) sendConsolidatedPassNotification(ctx context.Context, even
 		totalPasses += len(eventWithPasses.Passes)
 	}
 
-	message := s.formatConsolidatedPassMessage(eventsWithPasses, totalPasses)
+	message := s.formatConsolidatedPassMessage(ctx, eventsWithPasses, totalPasses)
 
 	var consolidatedExcel *bytes.Buffer
 	if totalPasses > 0 {
@@ -389,8 +393,9 @@ func (s *PassService) sendConsolidatedPassNotification(ctx context.Context, even
 	return telegramSent, emailSent, nil
 }
 
-func (s *PassService) formatConsolidatedPassMessage(eventsWithPasses []EventWithPasses, totalPasses int) string {
+func (s *PassService) formatConsolidatedPassMessage(ctx context.Context, eventsWithPasses []EventWithPasses, totalPasses int) string {
 	var message strings.Builder
+	totalShadowBanned := 0
 
 	message.WriteString("📋 <b>Сводка пропусков</b>\n\n")
 
@@ -399,17 +404,31 @@ func (s *PassService) formatConsolidatedPassMessage(eventsWithPasses []EventWith
 		return message.String()
 	}
 
-	message.WriteString(fmt.Sprintf("📊 <b>Всего событий:</b> %d\n", len(eventsWithPasses)))
-	message.WriteString(fmt.Sprintf("👥 <b>Всего пропусков:</b> %d\n\n", totalPasses))
+	_, _ = fmt.Fprintf(&message, "📊 <b>Всего событий:</b> %d\n", len(eventsWithPasses))
+	_, _ = fmt.Fprintf(&message, "👥 <b>Всего пропусков:</b> %d\n\n", totalPasses)
 
 	for i, eventWithPasses := range eventsWithPasses {
 		event := eventWithPasses.Event
 		passes := eventWithPasses.Passes
+		shadowBannedCount := s.countShadowBannedPasses(ctx, passes)
+		totalShadowBanned += shadowBannedCount
 
-		message.WriteString(fmt.Sprintf("<b>%d. %s</b>\n", i+1, event.Name))
-		message.WriteString(fmt.Sprintf("📅 %s\n", event.StartTime.In(location.Location()).Format("02.01.2006 15:04")))
-		message.WriteString(fmt.Sprintf("📍 %s\n", event.Location))
-		message.WriteString(fmt.Sprintf("👥 Пропусков: %d\n\n", len(passes)))
+		_, _ = fmt.Fprintf(&message, "<b>%d. %s</b>\n", i+1, event.Name)
+		_, _ = fmt.Fprintf(&message, "📅 %s\n", event.StartTime.In(location.Location()).Format("02.01.2006 15:04"))
+		_, _ = fmt.Fprintf(&message, "📍 %s\n", event.Location)
+		_, _ = fmt.Fprintf(&message, "👥 Пропусков: %d\n\n", len(passes))
+		if shadowBannedCount > 0 {
+			_, _ = fmt.Fprintf(&message, "⛔ Не пускать: %d\n\n", shadowBannedCount)
+		}
+	}
+
+	if totalShadowBanned > 0 {
+		return strings.Replace(
+			message.String(),
+			fmt.Sprintf("👥 <b>Всего пропусков:</b> %d\n\n", totalPasses),
+			fmt.Sprintf("👥 <b>Всего пропусков:</b> %d\n⛔ <b>Не пускать:</b> %d\n\n", totalPasses, totalShadowBanned),
+			1,
+		)
 	}
 
 	return message.String()
@@ -468,7 +487,7 @@ func (s *PassService) generateConsolidatedPassExcel(ctx context.Context, eventsW
 				event.StartTime.In(location.Location()).Format("02.01.2006"),
 				event.StartTime.In(location.Location()).Format("15:04"),
 				event.Location,
-				user.FIO.String(),
+				s.formatPassFIO(user),
 				user.Role,
 			}
 
@@ -489,6 +508,49 @@ func (s *PassService) generateConsolidatedPassExcel(ctx context.Context, eventsW
 	}
 
 	return &buf, nil
+}
+
+func (s *PassService) countShadowBannedPasses(ctx context.Context, passes []entity.Pass) int {
+	if s.shadowMatcher == nil || len(passes) == 0 {
+		return 0
+	}
+
+	userIDs := make([]int64, 0, len(passes))
+	for _, pass := range passes {
+		userIDs = append(userIDs, pass.UserID)
+	}
+
+	users, err := s.userRepo.GetMany(ctx, userIDs)
+	if err != nil {
+		s.logger.Errorw("Failed to get users for pass summary", "error", err)
+		return 0
+	}
+
+	userMap := make(map[int64]entity.User, len(users))
+	for _, user := range users {
+		userMap[user.ID] = user
+	}
+
+	count := 0
+	for _, pass := range passes {
+		user, exists := userMap[pass.UserID]
+		if !exists {
+			continue
+		}
+		if s.shadowMatcher.MatchUser(user) {
+			count++
+		}
+	}
+
+	return count
+}
+
+func (s *PassService) formatPassFIO(user entity.User) string {
+	if s.shadowMatcher != nil && s.shadowMatcher.MatchUser(user) {
+		return user.FIO.String() + " (НЕ ПУСКАТЬ)"
+	}
+
+	return user.FIO.String()
 }
 
 func (s *PassService) sendTelegramNotification(chatID int64, message string, file *bytes.Buffer) error {

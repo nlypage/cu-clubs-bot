@@ -262,6 +262,7 @@ func (s *serviceProvider) UserService() primary.UserService {
 			s.EventParticipantRepo(),
 			s.SMTPClient(),
 			s.cfg.App.EmailConfirmationTemplate(),
+			s.cfg.App.PassShadowBanNameSurnames(),
 		)
 	}
 
@@ -298,6 +299,7 @@ func (s *serviceProvider) EventParticipantService() primary.EventParticipantServ
 			s.PassRepo(),
 			s.UserRepo(),
 			s.cfg.App.PassExcludedRoles(),
+			s.cfg.App.PassShadowBanNameSurnames(),
 		)
 	}
 
@@ -321,6 +323,7 @@ func (s *serviceProvider) PassService() primary.PassService {
 			s.SMTPClient(),
 			s.cfg.App.PassEmails(),
 			s.cfg.Bot.PassChannelID(),
+			s.cfg.App.PassShadowBanNameSurnames(),
 		)
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/shadowban"
 	"github.com/Badsnus/cu-clubs-bot/bot/pkg/logger/types"
 )
 
@@ -28,6 +29,7 @@ type EventParticipantService struct {
 	passStorage   secondary.PassRepository
 	userStorage   secondary.UserRepository
 	excludedRoles []string
+	shadowMatcher *shadowban.Matcher
 }
 
 func NewEventParticipantService(
@@ -37,6 +39,7 @@ func NewEventParticipantService(
 	passRepo secondary.PassRepository,
 	userRepo secondary.UserRepository,
 	excludedRoles []string,
+	shadowBanNameSurnames []string,
 ) *EventParticipantService {
 	return &EventParticipantService{
 		logger:        logger,
@@ -45,6 +48,7 @@ func NewEventParticipantService(
 		passStorage:   passRepo,
 		userStorage:   userRepo,
 		excludedRoles: excludedRoles,
+		shadowMatcher: shadowban.NewMatcher(shadowBanNameSurnames),
 	}
 }
 
@@ -149,13 +153,48 @@ func (s *EventParticipantService) GetByEventID(ctx context.Context, eventID stri
 }
 
 func (s *EventParticipantService) CountByEventID(ctx context.Context, eventID string) (int, error) {
-	count, err := s.storage.CountByEventID(ctx, eventID)
-	return int(count), err
+	users, err := s.userStorage.GetUsersByEventID(ctx, eventID)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, user := range users {
+		if s.shadowMatcher.MatchUser(user) {
+			continue
+		}
+		count++
+	}
+
+	return count, nil
 }
 
 func (s *EventParticipantService) CountVisitedByEventID(ctx context.Context, eventID string) (int, error) {
-	count, err := s.storage.CountVisitedByEventID(ctx, eventID)
-	return int(count), err
+	participants, err := s.storage.GetByEventID(ctx, eventID)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(participants) == 0 {
+		return 0, nil
+	}
+
+	visibleUserIDs, err := s.visibleUserIDs(ctx, participants)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, participant := range participants {
+		if _, ok := visibleUserIDs[participant.UserID]; !ok {
+			continue
+		}
+		if participant.IsUserQr || participant.IsEventQr {
+			count++
+		}
+	}
+
+	return count, nil
 }
 
 func (s *EventParticipantService) GetUserEvents(ctx context.Context, userID int64, limit, offset int) ([]dto.UserEvent, error) {
@@ -191,6 +230,24 @@ func (s *EventParticipantService) IsUserRegistered(ctx context.Context, eventID 
 	return true, nil
 }
 
+func (s *EventParticipantService) IsShadowBanned(ctx context.Context, userID int64) (bool, error) {
+	user, err := s.userStorage.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return s.shadowMatcher.MatchUser(*user), nil
+}
+
+func (s *EventParticipantService) CanCancelRegistration(ctx context.Context, eventID string) (bool, error) {
+	event, err := s.eventStorage.GetEventByID(ctx, eventID)
+	if err != nil {
+		return false, err
+	}
+
+	return !event.IsOver(0), nil
+}
+
 func (s *EventParticipantService) BulkRegister(ctx context.Context, eventID string, userIDs []int64) ([]entity.EventParticipant, error) {
 	var participants []entity.EventParticipant
 
@@ -212,8 +269,16 @@ func (s *EventParticipantService) GetVisitedParticipants(ctx context.Context, ev
 		return nil, err
 	}
 
+	visibleUserIDs, err := s.visibleUserIDs(ctx, allParticipants)
+	if err != nil {
+		return nil, err
+	}
+
 	var visitedParticipants []entity.EventParticipant
 	for _, participant := range allParticipants {
+		if _, ok := visibleUserIDs[participant.UserID]; !ok {
+			continue
+		}
 		if participant.IsUserQr || participant.IsEventQr {
 			visitedParticipants = append(visitedParticipants, participant)
 		}
@@ -228,12 +293,42 @@ func (s *EventParticipantService) GetNotVisitedParticipants(ctx context.Context,
 		return nil, err
 	}
 
+	visibleUserIDs, err := s.visibleUserIDs(ctx, allParticipants)
+	if err != nil {
+		return nil, err
+	}
+
 	var notVisitedParticipants []entity.EventParticipant
 	for _, participant := range allParticipants {
+		if _, ok := visibleUserIDs[participant.UserID]; !ok {
+			continue
+		}
 		if !participant.IsUserQr && !participant.IsEventQr {
 			notVisitedParticipants = append(notVisitedParticipants, participant)
 		}
 	}
 
 	return notVisitedParticipants, nil
+}
+
+func (s *EventParticipantService) visibleUserIDs(ctx context.Context, participants []entity.EventParticipant) (map[int64]struct{}, error) {
+	userIDs := make([]int64, 0, len(participants))
+	for _, participant := range participants {
+		userIDs = append(userIDs, participant.UserID)
+	}
+
+	users, err := s.userStorage.GetMany(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	visibleUserIDs := make(map[int64]struct{}, len(users))
+	for _, user := range users {
+		if s.shadowMatcher.MatchUser(user) {
+			continue
+		}
+		visibleUserIDs[user.ID] = struct{}{}
+	}
+
+	return visibleUserIDs, nil
 }

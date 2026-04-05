@@ -10,6 +10,7 @@ type AppConfig interface {
 	PassEmails() []string
 	PassExcludedRoles() []string
 	PassLocationSubstrings() []string
+	PassShadowBanNameSurnames() []string
 	QRLogoPath() string
 	VersionNotifyOnStartup() bool
 	VersionChannelID() int64
@@ -21,6 +22,7 @@ type appConfig struct {
 	passEmails                []string
 	passExcludedRoles         []string
 	passLocationSubstrings    []string
+	passShadowBanNameSurnames []string
 	qrLogoPath                string
 	versionNotifyOnStartup    bool
 	versionChannelID          int64
@@ -33,6 +35,7 @@ func NewAppConfig() AppConfig {
 		passEmails:                viper.GetStringSlice("settings.pass.emails"),
 		passExcludedRoles:         viper.GetStringSlice("settings.pass.excluded-roles"),
 		passLocationSubstrings:    viper.GetStringSlice("settings.pass.location-substrings"),
+		passShadowBanNameSurnames: viper.GetStringSlice("settings.pass.shadow-ban-name-surnames"),
 		qrLogoPath:                viper.GetString("settings.qr.logo-path"),
 		versionNotifyOnStartup:    viper.GetBool("settings.version.notify-on-startup"),
 		versionChannelID:          viper.GetInt64("settings.version.channel-id"),
@@ -57,6 +60,10 @@ func (cfg *appConfig) PassExcludedRoles() []string {
 
 func (cfg *appConfig) PassLocationSubstrings() []string {
 	return cfg.passLocationSubstrings
+}
+
+func (cfg *appConfig) PassShadowBanNameSurnames() []string {
+	return cfg.passShadowBanNameSurnames
 }
 
 func (cfg *appConfig) QRLogoPath() string {

@@ -656,10 +656,6 @@ markups:
     - [ user:events:back ]
   user:myEvents:back:
     - [ user:myEvents:back ]
-  user:myEvents:event:
-    - [ user:myEvents:event:cancel_registration ]
-    - [ user:myEvents:event:export ]
-    - [ user:myEvents:back ]
   user:url:event:
     - [ user:url:event:register ]
     - [ mainMenu:back ]

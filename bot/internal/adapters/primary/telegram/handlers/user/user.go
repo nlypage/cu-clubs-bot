@@ -723,6 +723,19 @@ func (h Handler) event(c tele.Context) error {
 
 	if c.Callback().Unique == "event_register" {
 		if !registered {
+			isShadowBanned, err := h.eventParticipantService.IsShadowBanned(context.Background(), c.Sender().ID)
+			if err != nil {
+				h.logger.Errorf("(user: %d) error while checking shadow ban: %v", c.Sender().ID, err)
+				return c.Edit(
+					banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+					h.layout.Markup(c, "user:events:back", struct {
+						Page string
+					}{
+						Page: page,
+					}),
+				)
+			}
+
 			var roleAllowed bool
 			var registrationActive bool
 			var userSubscribed bool
@@ -755,7 +768,7 @@ func (h Handler) event(c tele.Context) error {
 				userSubscribed = true
 			}
 
-			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants) && registrationActive && roleAllowed && userSubscribed {
+			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants || isShadowBanned) && registrationActive && roleAllowed && userSubscribed {
 				_, err = h.eventParticipantService.Register(context.Background(), eventID, c.Sender().ID)
 				if err != nil {
 					h.logger.Errorf("(user: %d) error while register to event: %v", c.Sender().ID, err)
@@ -769,7 +782,7 @@ func (h Handler) event(c tele.Context) error {
 					)
 				}
 
-				if participantsCount+1 == event.ExpectedParticipants {
+				if !isShadowBanned && participantsCount+1 == event.ExpectedParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "expected_participants_reached_warning", struct {
 							Name              string
@@ -785,7 +798,7 @@ func (h Handler) event(c tele.Context) error {
 					}
 				}
 
-				if participantsCount+1 == event.MaxParticipants {
+				if !isShadowBanned && participantsCount+1 == event.MaxParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "max_participants_reached_warning", struct {
 							Name              string
@@ -808,7 +821,7 @@ func (h Handler) event(c tele.Context) error {
 						Text:      h.layout.Text(c, "registration_ended"),
 						ShowAlert: true,
 					})
-				case event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
+				case !isShadowBanned && event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "max_participants_reached"),
 						ShowAlert: true,
@@ -854,16 +867,31 @@ func (h Handler) event(c tele.Context) error {
 		Page: page,
 	})
 	if registered {
-		markup.InlineKeyboard = append(
-			[][]tele.InlineButton{{*h.layout.Button(c, "user:events:event:cancel_registration", struct {
-				ID   string
-				Page string
-			}{
-				ID:   eventID,
-				Page: page,
-			}).Inline()}},
-			markup.InlineKeyboard...,
-		)
+		canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+		if err != nil {
+			h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
+			return c.Edit(
+				banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+				h.layout.Markup(c, "user:events:back", struct {
+					Page string
+				}{
+					Page: page,
+				}),
+			)
+		}
+
+		if canCancelRegistration {
+			markup.InlineKeyboard = append(
+				[][]tele.InlineButton{{*h.layout.Button(c, "user:events:event:cancel_registration", struct {
+					ID   string
+					Page string
+				}{
+					ID:   eventID,
+					Page: page,
+				}).Inline()}},
+				markup.InlineKeyboard...,
+			)
+		}
 	} else {
 		markup.InlineKeyboard = append(
 			[][]tele.InlineButton{{*h.layout.Button(c, "user:events:event:register", struct {
@@ -927,7 +955,27 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 	eventID := callbackData[0]
 	page := callbackData[1]
 
-	err := h.eventParticipantService.Delete(context.Background(), eventID, c.Sender().ID)
+	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
+		return c.Edit(
+			banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "user:events:back", struct {
+				Page string
+			}{
+				Page: page,
+			}),
+		)
+	}
+
+	if !canCancelRegistration {
+		return c.Respond(&tele.CallbackResponse{
+			Text:      h.layout.Text(c, "event_started_alert"),
+			ShowAlert: true,
+		})
+	}
+
+	err = h.eventParticipantService.Delete(context.Background(), eventID, c.Sender().ID)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error while delete event participant: %v", c.Sender().ID, err)
 		return c.Edit(
@@ -1008,6 +1056,19 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 
 	if c.Callback().Unique == "event_register" {
 		if !registered {
+			isShadowBanned, err := h.eventParticipantService.IsShadowBanned(context.Background(), c.Sender().ID)
+			if err != nil {
+				h.logger.Errorf("(user: %d) error while checking shadow ban: %v", c.Sender().ID, err)
+				return c.Edit(
+					banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+					h.layout.Markup(c, "user:events:back", struct {
+						Page string
+					}{
+						Page: page,
+					}),
+				)
+			}
+
 			var roleAllowed bool
 			var registrationActive bool
 			for _, role := range event.AllowedRoles {
@@ -1022,7 +1083,7 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 				registrationActive = utils.GetMaxRegisteredEndTime(event.StartTime).After(time.Now().In(location.Location())) && event.RegistrationEnd.After(time.Now().In(location.Location()))
 			}
 
-			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants) && registrationActive && roleAllowed {
+			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants || isShadowBanned) && registrationActive && roleAllowed {
 				_, err = h.eventParticipantService.Register(context.Background(), eventID, c.Sender().ID)
 				if err != nil {
 					h.logger.Errorf("(user: %d) error while register to event: %v", c.Sender().ID, err)
@@ -1036,7 +1097,7 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 					)
 				}
 
-				if participantsCount+1 == event.ExpectedParticipants {
+				if !isShadowBanned && participantsCount+1 == event.ExpectedParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "expected_participants_reached_warning", struct {
 							Name              string
@@ -1052,7 +1113,7 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 					}
 				}
 
-				if participantsCount+1 == event.MaxParticipants {
+				if !isShadowBanned && participantsCount+1 == event.MaxParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
 						h.layout.Text(c, "max_participants_reached_warning", struct {
 							Name              string
@@ -1075,7 +1136,7 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 						Text:      h.layout.Text(c, "registration_ended"),
 						ShowAlert: true,
 					})
-				case event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
+				case !isShadowBanned && event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "max_participants_reached"),
 						ShowAlert: true,
@@ -1426,6 +1487,44 @@ func (h Handler) myEvent(c tele.Context) error {
 		}
 	}
 
+	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
+		return c.Edit(
+			banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "user:myEvents:back", struct {
+				Page string
+			}{
+				Page: page,
+			}),
+		)
+	}
+
+	markup := c.Bot().NewMarkup()
+	var rows []tele.Row
+	if canCancelRegistration {
+		rows = append(rows, markup.Row(*h.layout.Button(c, "user:myEvents:event:cancel_registration", struct {
+			ID   string
+			Page string
+		}{
+			ID:   eventID,
+			Page: page,
+		})))
+	}
+	rows = append(rows,
+		markup.Row(*h.layout.Button(c, "user:myEvents:event:export", struct {
+			ID string
+		}{
+			ID: eventID,
+		})),
+		markup.Row(*h.layout.Button(c, "user:myEvents:back", struct {
+			Page string
+		}{
+			Page: page,
+		})),
+	)
+	markup.Inline(rows...)
+
 	_ = c.Edit(
 		banner.Events.Caption(h.layout.Text(c, "my_event_text", struct {
 			Name                  string
@@ -1454,13 +1553,7 @@ func (h Handler) myEvent(c tele.Context) error {
 			IsOver:                event.IsOver(0),
 			IsVisited:             eventParticipant.IsEventQr || eventParticipant.IsUserQr,
 		})),
-		h.layout.Markup(c, "user:myEvents:event", struct {
-			ID   string
-			Page string
-		}{
-			ID:   eventID,
-			Page: page,
-		}))
+		markup)
 	return nil
 }
 
@@ -1472,7 +1565,23 @@ func (h Handler) myEventCancelRegistration(c tele.Context) error {
 	eventID := callbackData[0]
 	// page := callbackData[1]
 
-	err := h.eventParticipantService.Delete(context.Background(), eventID, c.Sender().ID)
+	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
+		return c.Edit(
+			banner.Events.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "core:hide"),
+		)
+	}
+
+	if !canCancelRegistration {
+		return c.Respond(&tele.CallbackResponse{
+			Text:      h.layout.Text(c, "event_started_alert"),
+			ShowAlert: true,
+		})
+	}
+
+	err = h.eventParticipantService.Delete(context.Background(), eventID, c.Sender().ID)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error while delete event participant: %v", c.Sender().ID, err)
 		return c.Edit(
