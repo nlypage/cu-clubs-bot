@@ -243,6 +243,9 @@ func (h Handler) eventRegister(c tele.Context) error {
 			}
 
 			if (event.MaxParticipants == 0 || participantsCount < event.MaxParticipants || isShadowBanned) && registrationActive && roleAllowed && userSubscribed {
+				h.logger.Infof("(user: %d) registration approved for event %s (participants: %d/%d, shadow_banned: %t, role: %s, subscribed: %t)", 
+					c.Sender().ID, eventID, participantsCount, event.MaxParticipants, isShadowBanned, user.Role, userSubscribed)
+				
 				_, err = h.eventParticipantService.Register(context.Background(), eventID, c.Sender().ID)
 				if err != nil {
 					h.logger.Errorf("(user: %d) error while register to event: %v", c.Sender().ID, err)
@@ -251,6 +254,8 @@ func (h Handler) eventRegister(c tele.Context) error {
 						h.layout.Markup(c, "mainMenu:back"),
 					)
 				}
+				
+				h.logger.Infof("(user: %d) successfully registered to event %s", c.Sender().ID, eventID)
 
 				if !isShadowBanned && participantsCount+1 == event.ExpectedParticipants {
 					errSendWarning := h.notificationService.SendClubWarning(event.ClubID,
@@ -286,23 +291,42 @@ func (h Handler) eventRegister(c tele.Context) error {
 
 				registered = true
 			} else {
+				// Детальное логирование причин отказа
+				h.logger.Infof("(user: %d) registration denied for event %s - checking conditions:", c.Sender().ID, eventID)
+				h.logger.Infof("(user: %d) - registration_active: %t (registration_end: %s, now: %s)", 
+					c.Sender().ID, registrationActive, event.RegistrationEnd.Format("2006-01-02 15:04:05"), time.Now().In(location.Location()).Format("2006-01-02 15:04:05"))
+				h.logger.Infof("(user: %d) - role_allowed: %t (user_role: %s, allowed_roles: %v)", 
+					c.Sender().ID, roleAllowed, user.Role, event.AllowedRoles)
+				h.logger.Infof("(user: %d) - user_subscribed: %t (subscription_required: %t, channel_id: %v)", 
+					c.Sender().ID, userSubscribed, club.SubscriptionRequired, club.ChannelID)
+				h.logger.Infof("(user: %d) - participants_limit: %d/%d (shadow_banned: %t)", 
+					c.Sender().ID, participantsCount, event.MaxParticipants, isShadowBanned)
+				
 				switch {
 				case event.RegistrationEnd.Before(time.Now().In(location.Location())):
+					h.logger.Infof("(user: %d) registration denied: registration ended (ended: %s, now: %s)", 
+						c.Sender().ID, event.RegistrationEnd.In(location.Location()).Format("2006-01-02 15:04:05"), time.Now().In(location.Location()).Format("2006-01-02 15:04:05"))
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "registration_ended"),
 						ShowAlert: true,
 					})
 				case !isShadowBanned && event.MaxParticipants > 0 && participantsCount >= event.MaxParticipants:
+					h.logger.Infof("(user: %d) registration denied: max participants reached (%d/%d)", 
+						c.Sender().ID, participantsCount, event.MaxParticipants)
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "max_participants_reached"),
 						ShowAlert: true,
 					})
 				case !roleAllowed:
+					h.logger.Infof("(user: %d) registration denied: role not allowed (user_role: %s, allowed_roles: %v)", 
+						c.Sender().ID, user.Role, event.AllowedRoles)
 					return c.Respond(&tele.CallbackResponse{
 						Text:      h.layout.Text(c, "not_allowed_role"),
 						ShowAlert: true,
 					})
 				case !userSubscribed:
+					h.logger.Infof("(user: %d) registration denied: not subscribed to channel %v", 
+						c.Sender().ID, club.ChannelID)
 					chat, err := c.Bot().ChatByID(*club.ChannelID)
 					if err != nil {
 						h.logger.Errorf("(user: %d) error while get chat: %v", c.Sender().ID, err)
@@ -320,6 +344,14 @@ func (h Handler) eventRegister(c tele.Context) error {
 						})),
 						h.layout.Markup(c, "core:hide"),
 					)
+				default:
+					h.logger.Errorf("(user: %d) registration denied: unknown reason (active: %t, role_ok: %t, subscribed: %t, limit_ok: %t)", 
+						c.Sender().ID, registrationActive, roleAllowed, userSubscribed, 
+						(event.MaxParticipants == 0 || participantsCount < event.MaxParticipants || isShadowBanned))
+					return c.Respond(&tele.CallbackResponse{
+						Text:      h.layout.Text(c, "technical_issues", "Unknown registration error"),
+						ShowAlert: true,
+					})
 				}
 			}
 		}
@@ -340,6 +372,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 			EndTime               string
 			RegistrationEnd       string
 			MaxParticipants       int
+			ParticipantsCount     int
 			AfterRegistrationText string
 			IsRegistered          bool
 		}{
@@ -351,6 +384,7 @@ func (h Handler) eventRegister(c tele.Context) error {
 			EndTime:               endTime,
 			RegistrationEnd:       event.RegistrationEnd.In(location.Location()).Format("02.01.2006 15:04"),
 			MaxParticipants:       event.MaxParticipants,
+			ParticipantsCount:     participantsCount,
 			AfterRegistrationText: event.AfterRegistrationText,
 			IsRegistered:          registered,
 		})),
