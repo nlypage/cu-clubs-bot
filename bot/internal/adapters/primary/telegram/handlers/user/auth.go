@@ -218,20 +218,48 @@ func (h Handler) externalUserAuth(c tele.Context) error {
 	return nil
 }
 
+func (h Handler) isGrantChatMember(c tele.Context) (bool, error) {
+	var lastErr error
+	checkedChats := 0
+
+	for _, grantChatID := range h.grantChatIDs {
+		member, err := c.Bot().ChatMemberOf(&tele.Chat{ID: grantChatID}, &tele.User{ID: c.Sender().ID})
+		if err != nil {
+			lastErr = err
+			h.logger.Errorf("(user: %d, chat: %d) error while verification user's membership in grant chat: %v", c.Sender().ID, grantChatID, err)
+			continue
+		}
+
+		checkedChats++
+		if isActiveChatMember(member.Role) {
+			return true, nil
+		}
+	}
+
+	if checkedChats == 0 && lastErr != nil {
+		return false, lastErr
+	}
+
+	return false, nil
+}
+
+func isActiveChatMember(role tele.MemberStatus) bool {
+	return role == tele.Creator || role == tele.Administrator || role == tele.Member
+}
+
 func (h Handler) grantUserAuth(c tele.Context) error {
 	h.logger.Infof("(user: %d) grant user auth", c.Sender().ID)
 
-	grantChatID := h.grantChatID
-	member, err := c.Bot().ChatMemberOf(&tele.Chat{ID: grantChatID}, &tele.User{ID: c.Sender().ID})
+	isGrantUser, err := h.isGrantChatMember(c)
 	if err != nil {
-		h.logger.Errorf("(user: %d) error while verification user's membership in the grant chat: %v", c.Sender().ID, err)
+		h.logger.Errorf("(user: %d) error while verification user's membership in grant chats: %v", c.Sender().ID, err)
 		return c.Send(
 			banner.Auth.Caption(h.layout.Text(c, "technical_issues", err.Error())),
 			h.layout.Markup(c, "core:hide"),
 		)
 	}
 
-	if member.Role != tele.Creator && member.Role != tele.Administrator && member.Role != tele.Member {
+	if !isGrantUser {
 		return c.Edit(
 			banner.Auth.Caption(h.layout.Text(c, "grant_user_required")),
 			h.layout.Markup(c, "auth:backToMenu"),

@@ -1,13 +1,15 @@
 package config
 
 import (
+	"reflect"
+
 	"github.com/spf13/viper"
 )
 
 type BotConfig interface {
 	Token() string
 	AdminIDs() []int64
-	GrantChatID() int64
+	GrantChatIDs() []int64
 	MailingChannelID() int64
 	AvatarChannelID() int64
 	IntroChannelID() int64
@@ -19,7 +21,7 @@ type BotConfig interface {
 type botConfig struct {
 	token             string
 	adminIDs          []int64
-	grantChatID       int64
+	grantChatIDs      []int64
 	mailingChannelID  int64
 	avatarChannelID   int64
 	introChannelID    int64
@@ -29,15 +31,10 @@ type botConfig struct {
 }
 
 func NewBotConfig() BotConfig {
-	admins := viper.GetIntSlice("bot.admin-ids")
-	adminIDs := make([]int64, len(admins))
-	for i, v := range admins {
-		adminIDs[i] = int64(v)
-	}
 	return &botConfig{
 		token:             viper.GetString("bot.token"),
-		adminIDs:          adminIDs,
-		grantChatID:       viper.GetInt64("bot.auth.grant-chat-id"),
+		adminIDs:          intSliceToInt64Slice(viper.GetIntSlice("bot.admin-ids")),
+		grantChatIDs:      getInt64Slice("bot.auth.grant-chat-id"),
 		mailingChannelID:  viper.GetInt64("bot.mailing.channel-id"),
 		avatarChannelID:   viper.GetInt64("bot.avatar.channel-id"),
 		introChannelID:    viper.GetInt64("bot.intro.channel-id"),
@@ -45,6 +42,28 @@ func NewBotConfig() BotConfig {
 		qrChannelID:       viper.GetInt64("bot.qr.channel-id"),
 		validEmailDomains: viper.GetStringSlice("bot.auth.valid-email-domains"),
 	}
+}
+
+func intSliceToInt64Slice(values []int) []int64 {
+	result := make([]int64, len(values))
+	for i, v := range values {
+		result[i] = int64(v)
+	}
+	return result
+}
+
+func getInt64Slice(key string) []int64 {
+	value := viper.Get(key)
+	if value == nil {
+		return nil
+	}
+
+	kind := reflect.TypeOf(value).Kind()
+	if kind == reflect.Slice || kind == reflect.Array {
+		return intSliceToInt64Slice(viper.GetIntSlice(key))
+	}
+
+	return []int64{viper.GetInt64(key)}
 }
 
 func (cfg *botConfig) Token() string {
@@ -55,8 +74,8 @@ func (cfg *botConfig) AdminIDs() []int64 {
 	return cfg.adminIDs
 }
 
-func (cfg *botConfig) GrantChatID() int64 {
-	return cfg.grantChatID
+func (cfg *botConfig) GrantChatIDs() []int64 {
+	return cfg.grantChatIDs
 }
 
 func (cfg *botConfig) MailingChannelID() int64 {
