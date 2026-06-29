@@ -55,7 +55,7 @@ type Handler struct {
 	layout           *layout.Layout
 	logger           *types.Logger
 
-	grantChatID       int64
+	grantChatIDs      []int64
 	timezone          string
 	validEmailDomains []string
 	emailTTL          time.Duration
@@ -78,7 +78,7 @@ func New(
 	lt *layout.Layout,
 	lg *types.Logger,
 	in *intele.InputManager,
-	grantChatID int64,
+	grantChatIDs []int64,
 	timezone string,
 	validEmailDomains []string,
 	emailTTL time.Duration,
@@ -100,7 +100,7 @@ func New(
 		layout:                  lt,
 		input:                   in,
 		logger:                  lg,
-		grantChatID:             grantChatID,
+		grantChatIDs:            grantChatIDs,
 		timezone:                timezone,
 		validEmailDomains:       validEmailDomains,
 		emailTTL:                emailTTL,
@@ -1736,17 +1736,16 @@ func (h Handler) changeRole(c tele.Context) error {
 }
 
 func (h Handler) changeRoleGrantUser(c tele.Context) error {
-	grantChatID := h.grantChatID
-	member, err := c.Bot().ChatMemberOf(&tele.Chat{ID: grantChatID}, &tele.User{ID: c.Sender().ID})
+	isGrantUser, err := h.isGrantChatMember(c)
 	if err != nil {
-		h.logger.Errorf("(user: %d) error while verification user's membership in the grant chat: %v", c.Sender().ID, err)
+		h.logger.Errorf("(user: %d) error while verification user's membership in grant chats: %v", c.Sender().ID, err)
 		return c.Send(
 			banner.PersonalAccount.Caption(h.layout.Text(c, "technical_issues", err.Error())),
 			h.layout.Markup(c, "personalAccount:back"),
 		)
 	}
 
-	if member.Role != tele.Creator && member.Role != tele.Administrator && member.Role != tele.Member {
+	if !isGrantUser {
 		return c.Edit(
 			banner.PersonalAccount.Caption(h.layout.Text(c, "grant_user_required")),
 			h.layout.Markup(c, "personalAccount:back"),

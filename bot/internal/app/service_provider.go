@@ -444,7 +444,7 @@ func (s *serviceProvider) UserHandler() *user.Handler {
 			s.Bot().Layout,
 			s.Bot().Logger,
 			s.Bot().Input,
-			s.Cfg().Bot.GrantChatID(),
+			s.Cfg().Bot.GrantChatIDs(),
 			s.Cfg().App.Timezone(),
 			s.Cfg().Bot.ValidEmailDomains(),
 			s.Cfg().Session.EmailTTL(),

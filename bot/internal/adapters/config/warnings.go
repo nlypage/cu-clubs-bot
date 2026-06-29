@@ -75,6 +75,15 @@ func (wm *WarningsManager) CheckZeroInt64(field string, value int64, context str
 	}
 }
 
+// CheckZeroInt64Slice warns if an int64 slice contains a zero value.
+func (wm *WarningsManager) CheckZeroInt64Slice(field string, values []int64, context string) {
+	for i, value := range values {
+		if value == 0 {
+			wm.AddWarningf(field, "contains zero value at index %d, %s", i, context)
+		}
+	}
+}
+
 // CheckConditionalInt64 warns if an int64 field is zero when a condition is true
 func (wm *WarningsManager) CheckConditionalInt64(field string, value int64, condition bool, context string) {
 	if condition && value == 0 {
@@ -132,6 +141,8 @@ func (wm *WarningsManager) ValidateConfig(cfg *Config) {
 	wm.CheckEmptyString("Bot.Token", cfg.Bot.Token(), "bot functionality may not work")
 	wm.CheckEmptySlice("Bot.AdminIDs", cfg.Bot.AdminIDs(), "admin functionality may not work properly")
 	wm.CheckEmptySlice("Bot.ValidEmailDomains", cfg.Bot.ValidEmailDomains(), "email domain validation may not work")
+	wm.CheckEmptySlice("Bot.GrantChatIDs", cfg.Bot.GrantChatIDs(), "grant chat functionality may not work")
+	wm.CheckZeroInt64Slice("Bot.GrantChatIDs", cfg.Bot.GrantChatIDs(), "grant chat functionality may not work")
 
 	// Bot channel warnings
 	wm.CheckZeroInt64("Bot.MailingChannelID", cfg.Bot.MailingChannelID(), "mailing functionality may not work")
@@ -139,7 +150,6 @@ func (wm *WarningsManager) ValidateConfig(cfg *Config) {
 	wm.CheckZeroInt64("Bot.IntroChannelID", cfg.Bot.IntroChannelID(), "intro uploads may not work")
 	wm.CheckZeroInt64("Bot.PassChannelID", cfg.Bot.PassChannelID(), "pass functionality may not work")
 	wm.CheckZeroInt64("Bot.QRChannelID", cfg.Bot.QRChannelID(), "QR functionality may not work")
-	wm.CheckZeroInt64("Bot.GrantChatID", cfg.Bot.GrantChatID(), "grant chat functionality may not work")
 
 	// Logger warnings
 	wm.CheckConditionalInt64("Logger.ChannelID", cfg.Logger.ChannelID(), cfg.Logger.LogToChannel(), "LogToChannel is enabled")

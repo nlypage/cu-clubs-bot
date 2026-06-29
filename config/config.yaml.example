@@ -16,7 +16,9 @@ bot:
     club-owner: "file_id"
     events: "file_id"
   auth:
-    grant-chat-id: -40000000
+    grant-chat-id:
+        - -40000000
+        - -50000000
     valid-email-domains:
         - edu.centraluniversity.ru
         - centraluniversity.ru
