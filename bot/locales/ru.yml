@@ -618,6 +618,30 @@ roles: |-
 manage_roles: |-
   <b>Выберите роли к которым у клуба будет доступ</b>
 
+attendance_report: Отчёт по посещениям
+input_report_from_date: |-
+  <b>Введите дату начала периода</b>
+
+  <i>Формат: ДД.ММ.ГГГГ (например, 01.09.2026)</i>
+invalid_report_from_date: |-
+  <b>Некорректная дата</b>
+
+  <i>Формат: ДД.ММ.ГГГГ. Попробуйте ещё раз</i>
+input_report_to_date: |-
+  <b>Введите дату окончания периода</b>
+
+  Дата начала: <b>{{html .FromDate}}</b>
+  <i>Формат: ДД.ММ.ГГГГ</i>
+invalid_report_to_date: |-
+  <b>Некорректная дата окончания периода</b>
+
+  Дата должна быть не раньше <b>{{html .FromDate}}</b>
+  <i>Попробуйте ещё раз</i>
+report_empty: |-
+  <b>За период с {{html .FromDate}} по {{html .ToDate}} посещений не найдено</b>
+attendance_report_caption: |-
+  Отчёт по посещениям за период {{html .FromDate}} — {{html .ToDate}}
+
 user_banned: |-
   <b>{{html .FIO}}</b> (id: <code>{{.ID}}</code>) успешно забанен
 user_unbanned: |-

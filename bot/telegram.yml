@@ -541,6 +541,10 @@ buttons:
     callback_data: '{{.ID}} {{.Page}}'
     text: '{{ text `back` }}'
 
+  admin:attendance_report:
+    unique: admin_attendance_report
+    text: '{{ text `attendance_report` }}'
+
   # cu clubs tour functionality
   mainMenu:cuClubs:
     unique: mainMenu_cuClubs
@@ -730,6 +734,7 @@ markups:
   admin:menu:
     - [ admin:clubs ]
     - [ admin:create_club ]
+    - [ admin:attendance_report ]
     - [ mainMenu:back ]
   admin:backToMenu:
     - [ admin:back_to_menu ]

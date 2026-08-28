@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -203,6 +204,10 @@ func (s *EventParticipantService) GetUserEvents(ctx context.Context, userID int6
 
 func (s *EventParticipantService) CountUserEvents(ctx context.Context, userID int64) (int64, error) {
 	return s.storage.CountUserEvents(ctx, userID)
+}
+
+func (s *EventParticipantService) GetVisitedInRange(ctx context.Context, from, to time.Time) ([]dto.Visit, error) {
+	return s.storage.GetVisitedInRange(ctx, from, to)
 }
 
 func (s *EventParticipantService) MarkAsVisited(ctx context.Context, eventID string, userID int64, isUserQR, isEventQR bool) error {

@@ -1,10 +1,13 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/layout"
@@ -12,11 +15,13 @@ import (
 
 	"github.com/nlypage/intele"
 	"github.com/nlypage/intele/collector"
+	"github.com/xuri/excelize/v2"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/common/errorz"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/banner"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/validator"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/valueobject"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/primary"
@@ -29,28 +34,31 @@ type Handler struct {
 	bot    *tele.Bot
 	input  *intele.InputManager
 
-	adminUserService primary.UserService
-	clubService      primary.ClubService
-	clubOwnerService primary.ClubOwnerService
+	adminUserService        primary.UserService
+	clubService             primary.ClubService
+	clubOwnerService        primary.ClubOwnerService
+	eventParticipantService primary.EventParticipantService
 }
 
 func New(
 	userSvc primary.UserService,
 	clubSvc primary.ClubService,
 	clubOwnerSvc primary.ClubOwnerService,
+	eventParticipantSvc primary.EventParticipantService,
 	b *tele.Bot,
 	lt *layout.Layout,
 	lg *types.Logger,
 	in *intele.InputManager,
 ) *Handler {
 	return &Handler{
-		layout:           lt,
-		logger:           lg,
-		bot:              b,
-		input:            in,
-		adminUserService: userSvc,
-		clubService:      clubSvc,
-		clubOwnerService: clubOwnerSvc,
+		layout:                  lt,
+		logger:                  lg,
+		bot:                     b,
+		input:                   in,
+		adminUserService:        userSvc,
+		clubService:             clubSvc,
+		clubOwnerService:        clubOwnerSvc,
+		eventParticipantService: eventParticipantSvc,
 	}
 }
 
@@ -816,6 +824,177 @@ func (h Handler) deleteClub(c tele.Context) error {
 	)
 }
 
+func (h Handler) attendanceReport(c tele.Context) error {
+	h.logger.Infof("(user: %d) attendance report request", c.Sender().ID)
+	inputCollector := collector.New()
+	_ = c.Edit(
+		banner.Menu.Caption(h.layout.Text(c, "input_report_from_date")),
+		h.layout.Markup(c, "admin:backToMenu"),
+	)
+	inputCollector.Collect(c.Message())
+
+	var (
+		fromDateStr string
+		toDateStr   string
+	)
+	for {
+		var done bool
+		response, errGet := h.input.Get(context.Background(), c.Sender().ID, 0)
+		if response.Message != nil {
+			inputCollector.Collect(response.Message)
+		}
+		switch {
+		case response.Canceled:
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true, ExcludeLast: true})
+			return nil
+		case errGet != nil:
+			h.logger.Errorf("(user: %d) error while input report from date: %v", c.Sender().ID, errGet)
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_report_from_date"))),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case response.Message == nil:
+			h.logger.Errorf("(user: %d) error while input report from date: %v", c.Sender().ID, errGet)
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_report_from_date"))),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case !validator.ReportDate(response.Message.Text, nil):
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "invalid_report_from_date")),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case validator.ReportDate(response.Message.Text, nil):
+			fromDateStr = response.Message.Text
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true})
+			done = true
+		}
+		if done {
+			break
+		}
+	}
+
+	_ = inputCollector.Send(c,
+		banner.Menu.Caption(h.layout.Text(c, "input_report_to_date", struct {
+			FromDate string
+		}{
+			FromDate: fromDateStr,
+		})),
+		h.layout.Markup(c, "admin:backToMenu"),
+	)
+
+	for {
+		var done bool
+		response, errGet := h.input.Get(context.Background(), c.Sender().ID, 0)
+		if response.Message != nil {
+			inputCollector.Collect(response.Message)
+		}
+		switch {
+		case response.Canceled:
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true, ExcludeLast: true})
+			return nil
+		case errGet != nil:
+			h.logger.Errorf("(user: %d) error while input report to date: %v", c.Sender().ID, errGet)
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_report_to_date", struct {
+					FromDate string
+				}{
+					FromDate: fromDateStr,
+				}))),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case response.Message == nil:
+			h.logger.Errorf("(user: %d) error while input report to date: %v", c.Sender().ID, errGet)
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "input_error", h.layout.Text(c, "input_report_to_date", struct {
+					FromDate string
+				}{
+					FromDate: fromDateStr,
+				}))),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case !validator.ReportEndDate(response.Message.Text, map[string]interface{}{
+			"fromDate": fromDateStr,
+		}):
+			_ = inputCollector.Send(c,
+				banner.Menu.Caption(h.layout.Text(c, "invalid_report_to_date", struct {
+					FromDate string
+				}{
+					FromDate: fromDateStr,
+				})),
+				h.layout.Markup(c, "admin:backToMenu"),
+			)
+		case validator.ReportEndDate(response.Message.Text, map[string]interface{}{
+			"fromDate": fromDateStr,
+		}):
+			toDateStr = response.Message.Text
+			_ = inputCollector.Clear(c, collector.ClearOptions{IgnoreErrors: true})
+			done = true
+		}
+		if done {
+			break
+		}
+	}
+
+	const dateLayout = "02.01.2006"
+
+	fromDate, _ := time.ParseInLocation(dateLayout, fromDateStr, location.Location())
+	// the end date is inclusive up to the end of the day
+	toDate, _ := time.ParseInLocation(dateLayout, toDateStr, location.Location())
+	toDate = toDate.AddDate(0, 0, 1).Add(-time.Nanosecond)
+
+	visits, err := h.eventParticipantService.GetVisitedInRange(context.Background(), fromDate, toDate)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while get visited in range (from=%s, to=%s): %v", c.Sender().ID, fromDateStr, toDateStr, err)
+		return c.Send(
+			banner.Menu.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "admin:backToMenu"),
+		)
+	}
+
+	if len(visits) == 0 {
+		h.logger.Infof("(user: %d) attendance report is empty (from=%s, to=%s)", c.Sender().ID, fromDateStr, toDateStr)
+		return c.Send(
+			banner.Menu.Caption(h.layout.Text(c, "report_empty", struct {
+				FromDate string
+				ToDate   string
+			}{
+				FromDate: fromDateStr,
+				ToDate:   toDateStr,
+			})),
+			h.layout.Markup(c, "admin:backToMenu"),
+		)
+	}
+
+	buffer, err := visitsToXLSX(visits)
+	if err != nil {
+		h.logger.Errorf("(user: %d) error while create xlsx report: %v", c.Sender().ID, err)
+		return c.Send(
+			banner.Menu.Caption(h.layout.Text(c, "technical_issues", err.Error())),
+			h.layout.Markup(c, "admin:backToMenu"),
+		)
+	}
+
+	file := &tele.Document{
+		File: tele.FromReader(buffer),
+		Caption: h.layout.Text(c, "attendance_report_caption", struct {
+			FromDate string
+			ToDate   string
+		}{
+			FromDate: fromDateStr,
+			ToDate:   toDateStr,
+		}),
+		FileName: fmt.Sprintf("visits_%s-%s.xlsx", fromDateStr, toDateStr),
+	}
+
+	h.logger.Infof("(user: %d) attendance report sent (from=%s, to=%s, visits_count=%d)", c.Sender().ID, fromDateStr, toDateStr, len(visits))
+
+	return c.Send(
+		file,
+		h.layout.Markup(c, "admin:backToMenu"),
+	)
+}
+
 func (h Handler) banUser(c tele.Context) error {
 	_ = c.Delete()
 	if c.Message() == nil || c.Message().Payload == "" {
@@ -902,5 +1081,31 @@ func (h Handler) AdminSetup(group *tele.Group) {
 	group.Handle(h.layout.Callback("admin:club:roles"), h.manageRoles)
 	group.Handle(h.layout.Callback("admin:club:roles:role"), h.manageRoles)
 	group.Handle(h.layout.Callback("admin:club:delete"), h.deleteClub)
+	group.Handle(h.layout.Callback("admin:attendance_report"), h.attendanceReport)
 	group.Handle("/ban", h.banUser)
+}
+
+func visitsToXLSX(visits []dto.Visit) (*bytes.Buffer, error) {
+	f := excelize.NewFile()
+
+	sheet := "Sheet1"
+	_ = f.SetCellValue(sheet, "A1", "Club")
+	_ = f.SetCellValue(sheet, "B1", "login")
+	_ = f.SetCellValue(sheet, "C1", "username")
+	_ = f.SetCellValue(sheet, "D1", "datetime")
+
+	for i, visit := range visits {
+		row := strconv.Itoa(i + 2)
+		_ = f.SetCellValue(sheet, "A"+row, visit.ClubName)
+		_ = f.SetCellValue(sheet, "B"+row, visit.Login)
+		_ = f.SetCellValue(sheet, "C"+row, visit.Username)
+		_ = f.SetCellValue(sheet, "D"+row, visit.VisitedAt.In(location.Location()).Format("02.01.2006 15:04"))
+	}
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, err
+	}
+
+	return &buf, nil
 }
