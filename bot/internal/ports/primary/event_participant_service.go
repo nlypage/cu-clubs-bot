@@ -2,6 +2,7 @@ package primary
 
 import (
 	"context"
+	"time"
 
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/dto"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/entity"
@@ -18,6 +19,7 @@ type EventParticipantService interface {
 	CountVisitedByEventID(ctx context.Context, eventID string) (int, error)
 	GetUserEvents(ctx context.Context, userID int64, limit, offset int) ([]dto.UserEvent, error)
 	CountUserEvents(ctx context.Context, userID int64) (int64, error)
+	GetVisitedInRange(ctx context.Context, from, to time.Time) ([]dto.Visit, error)
 	MarkAsVisited(ctx context.Context, eventID string, userID int64, isUserQR, isEventQR bool) error
 	IsUserRegistered(ctx context.Context, eventID string, userID int64) (bool, error)
 	IsShadowBanned(ctx context.Context, userID int64) (bool, error)

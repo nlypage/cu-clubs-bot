@@ -418,6 +418,7 @@ func (s *serviceProvider) AdminHandler() *admin.Handler {
 			s.UserService(),
 			s.ClubService(),
 			s.ClubOwnerService(),
+			s.EventParticipantService(),
 			s.Bot().Bot,
 			s.Bot().Layout,
 			s.Bot().Logger,

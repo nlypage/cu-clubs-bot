@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -158,4 +159,44 @@ func (s *EventParticipantRepository) CountUserEvents(ctx context.Context, userID
 		Where("event_participants.user_id = ? AND events.deleted_at IS NULL", userID).
 		Count(&count).Error
 	return count, err
+}
+
+// GetVisitedInRange returns all visits (participants marked by user or event QR)
+// across all clubs in the given time range, ordered by club name and visit time.
+// The visit time is the moment the QR was scanned, stored in updated_at
+// (the only update path for participants is QR activation).
+func (s *EventParticipantRepository) GetVisitedInRange(ctx context.Context, from, to time.Time) ([]dto.Visit, error) {
+	type visitRow struct {
+		ClubName  string
+		Email     string
+		Username  string
+		VisitedAt time.Time
+	}
+
+	var rows []visitRow
+	err := s.db.WithContext(ctx).
+		Table("event_participants").
+		Select("clubs.name as club_name, users.email as email, users.username as username, event_participants.updated_at as visited_at").
+		Joins("JOIN events ON events.id = event_participants.event_id AND events.deleted_at IS NULL").
+		Joins("JOIN clubs ON clubs.id = events.club_id").
+		Joins("JOIN users ON users.id = event_participants.user_id").
+		Where("event_participants.updated_at >= ? AND event_participants.updated_at <= ? AND (event_participants.is_user_qr = true OR event_participants.is_event_qr = true)", from, to).
+		Order("club_name ASC, visited_at ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	visits := make([]dto.Visit, len(rows))
+	for i, row := range rows {
+		login, _, _ := strings.Cut(row.Email, "@")
+		visits[i] = dto.Visit{
+			ClubName:  row.ClubName,
+			Login:     login,
+			Username:  row.Username,
+			VisitedAt: row.VisitedAt,
+		}
+	}
+
+	return visits, nil
 }
