@@ -27,6 +27,7 @@ import (
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/banner"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/location"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/utils/validator"
+	"github.com/Badsnus/cu-clubs-bot/bot/internal/domain/valueobject"
 	"github.com/Badsnus/cu-clubs-bot/bot/internal/ports/primary"
 	"github.com/Badsnus/cu-clubs-bot/bot/pkg/logger/types"
 )
@@ -3962,6 +3963,7 @@ func usersToXLSX(users []dto.EventUser) (*bytes.Buffer, error) {
 	_ = f.SetCellValue(sheet, "D1", "Отчество")
 	_ = f.SetCellValue(sheet, "E1", "Username")
 	_ = f.SetCellValue(sheet, "F1", "Посетил")
+	_ = f.SetCellValue(sheet, "G1", "Participant Type")
 
 	for i, user := range users {
 		fio := strings.Split(user.User.FIO.String(), " ")
@@ -3973,6 +3975,7 @@ func usersToXLSX(users []dto.EventUser) (*bytes.Buffer, error) {
 		_ = f.SetCellValue(sheet, "D"+strconv.Itoa(row), fio[2])
 		_ = f.SetCellValue(sheet, "E"+strconv.Itoa(row), user.User.Username)
 		_ = f.SetCellValue(sheet, "F"+strconv.Itoa(row), user.UserVisit)
+		_ = f.SetCellValue(sheet, "G"+strconv.Itoa(row), participantType(user.User.Role))
 	}
 
 	var buf bytes.Buffer
@@ -3981,4 +3984,17 @@ func usersToXLSX(users []dto.EventUser) (*bytes.Buffer, error) {
 	}
 
 	return &buf, nil
+}
+
+func participantType(role valueobject.Role) string {
+	switch role {
+	case valueobject.Student:
+		return "Student"
+	case valueobject.GrantUser:
+		return "Grant Recipient"
+	case valueobject.ExternalUser:
+		return "External Participant"
+	default:
+		return role.String()
+	}
 }
