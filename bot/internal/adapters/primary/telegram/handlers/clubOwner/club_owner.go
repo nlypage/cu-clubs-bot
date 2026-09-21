@@ -3962,6 +3962,7 @@ func usersToXLSX(users []dto.EventUser) (*bytes.Buffer, error) {
 	_ = f.SetCellValue(sheet, "D1", "Отчество")
 	_ = f.SetCellValue(sheet, "E1", "Username")
 	_ = f.SetCellValue(sheet, "F1", "Посетил")
+	_ = f.SetCellValue(sheet, "G1", "Тип участника")
 
 	for i, user := range users {
 		fio := strings.Split(user.User.FIO.String(), " ")
@@ -3973,6 +3974,7 @@ func usersToXLSX(users []dto.EventUser) (*bytes.Buffer, error) {
 		_ = f.SetCellValue(sheet, "D"+strconv.Itoa(row), fio[2])
 		_ = f.SetCellValue(sheet, "E"+strconv.Itoa(row), user.User.Username)
 		_ = f.SetCellValue(sheet, "F"+strconv.Itoa(row), user.UserVisit)
+		_ = f.SetCellValue(sheet, "G"+strconv.Itoa(row), user.User.Role.String())
 	}
 
 	var buf bytes.Buffer
