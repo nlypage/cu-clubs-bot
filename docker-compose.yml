@@ -3,8 +3,12 @@ services:
     container_name: bot
     image: ${REGISTRY_URL}/${GITHUB_REPOSITORY}:${TAG:-main}
     depends_on:
-      - redis
-      - export-html
+      redis:
+        condition: service_started
+      export-html:
+        condition: service_started
+      database:
+        condition: service_healthy
     volumes:
       - ./logs:/opt/logs
       - ./config:/opt/config
@@ -19,6 +23,28 @@ services:
     expose:
       - "2305"
     restart: always
+
+  database:
+    container_name: database
+    image: postgres:16.2-alpine3.19
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    command: -p ${POSTGRES_PORT}
+    expose:
+      - ${POSTGRES_PORT}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - database:/var/lib/postgresql/data
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
 
   redis:
     container_name: redis
@@ -44,3 +70,4 @@ services:
 
 volumes:
   redis-data:
+  database:
