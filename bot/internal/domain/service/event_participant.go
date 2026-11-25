@@ -244,13 +244,38 @@ func (s *EventParticipantService) IsShadowBanned(ctx context.Context, userID int
 	return s.shadowMatcher.MatchUser(*user), nil
 }
 
-func (s *EventParticipantService) CanCancelRegistration(ctx context.Context, eventID string) (bool, error) {
+func (s *EventParticipantService) CanCancelRegistration(ctx context.Context, eventID string, userID int64) (dto.CancelRegistrationAvailability, error) {
+	availability := dto.CancelRegistrationAvailability{}
+
 	event, err := s.eventStorage.GetEventByID(ctx, eventID)
 	if err != nil {
-		return false, err
+		return availability, err
 	}
 
-	return !event.IsOver(0), nil
+	if event.IsOver(0) {
+		return availability, nil
+	}
+
+	participant, err := s.storage.Get(ctx, eventID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The user is not registered yet, the event-level check above is enough.
+			availability.Allowed = true
+			return availability, nil
+		}
+		s.logger.Errorf("failed to check cancel registration availability for event %s, user %d: %v", eventID, userID, err)
+		return availability, err
+	}
+
+	if participant.IsUserQr || participant.IsEventQr {
+		// The attendance mark lives on the participant record, so canceling
+		// would delete it along with the registration. Block it.
+		availability.AlreadyVisited = true
+		return availability, nil
+	}
+
+	availability.Allowed = true
+	return availability, nil
 }
 
 func (s *EventParticipantService) BulkRegister(ctx context.Context, eventID string, userIDs []int64) ([]entity.EventParticipant, error) {

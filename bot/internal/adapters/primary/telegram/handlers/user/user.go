@@ -867,7 +867,7 @@ func (h Handler) event(c tele.Context) error {
 		Page: page,
 	})
 	if registered {
-		canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+		cancelAvailability, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID, c.Sender().ID)
 		if err != nil {
 			h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
 			return c.Edit(
@@ -880,7 +880,7 @@ func (h Handler) event(c tele.Context) error {
 			)
 		}
 
-		if canCancelRegistration {
+		if cancelAvailability.Allowed {
 			markup.InlineKeyboard = append(
 				[][]tele.InlineButton{{*h.layout.Button(c, "user:events:event:cancel_registration", struct {
 					ID   string
@@ -955,7 +955,7 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 	eventID := callbackData[0]
 	page := callbackData[1]
 
-	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	cancelAvailability, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID, c.Sender().ID)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
 		return c.Edit(
@@ -968,9 +968,13 @@ func (h Handler) eventCancelRegistration(c tele.Context) error {
 		)
 	}
 
-	if !canCancelRegistration {
+	if !cancelAvailability.Allowed {
+		alertKey := "event_started_alert"
+		if cancelAvailability.AlreadyVisited {
+			alertKey = "cancel_registration_visited_alert"
+		}
 		return c.Respond(&tele.CallbackResponse{
-			Text:      h.layout.Text(c, "event_started_alert"),
+			Text:      h.layout.Text(c, alertKey),
 			ShowAlert: true,
 		})
 	}
@@ -1487,7 +1491,7 @@ func (h Handler) myEvent(c tele.Context) error {
 		}
 	}
 
-	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	cancelAvailability, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID, c.Sender().ID)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
 		return c.Edit(
@@ -1502,7 +1506,7 @@ func (h Handler) myEvent(c tele.Context) error {
 
 	markup := c.Bot().NewMarkup()
 	var rows []tele.Row
-	if canCancelRegistration {
+	if cancelAvailability.Allowed {
 		rows = append(rows, markup.Row(*h.layout.Button(c, "user:myEvents:event:cancel_registration", struct {
 			ID   string
 			Page string
@@ -1565,7 +1569,7 @@ func (h Handler) myEventCancelRegistration(c tele.Context) error {
 	eventID := callbackData[0]
 	// page := callbackData[1]
 
-	canCancelRegistration, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID)
+	cancelAvailability, err := h.eventParticipantService.CanCancelRegistration(context.Background(), eventID, c.Sender().ID)
 	if err != nil {
 		h.logger.Errorf("(user: %d) error while checking cancel registration availability: %v", c.Sender().ID, err)
 		return c.Edit(
@@ -1574,9 +1578,13 @@ func (h Handler) myEventCancelRegistration(c tele.Context) error {
 		)
 	}
 
-	if !canCancelRegistration {
+	if !cancelAvailability.Allowed {
+		alertKey := "event_started_alert"
+		if cancelAvailability.AlreadyVisited {
+			alertKey = "cancel_registration_visited_alert"
+		}
 		return c.Respond(&tele.CallbackResponse{
-			Text:      h.layout.Text(c, "event_started_alert"),
+			Text:      h.layout.Text(c, alertKey),
 			ShowAlert: true,
 		})
 	}
